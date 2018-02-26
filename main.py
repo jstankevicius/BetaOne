@@ -8,24 +8,44 @@
 from tkinter import *
 from tkinter import ttk
 from tkinter import font
+from board import board
 
-# GAME STATE:
-# 0 = main menu
-# 1 = playing against AI
-# 2 = playing against another human
-# 3 = viewing game
-
-# The above settings should essentially determine how much control the
-# user has over the board. In state 1, they are only allowed to move
-# their pieces (TODO: implement random sides). In state 2, they can
-# move any piece, because there are assumed to be two players sitting
-# at the same computer. In state 3, the player has no control over the
-# board, and can only view the game state as it progresses.
-global_game_state = 0
+# Image references:
+img_ref = {"6": "images//white_king.png",
+           "5": "images//white_queen.png",
+           "4": "images//white_rook.png",
+           "3": "images//white_bishop.png",
+           "2": "images//white_knight.png",
+           "1": "images//white_pawn.png",
+           "-1": "images//black_pawn.png",
+           "-2": "images//black_knight.png",
+           "-3": "images//black_bishop.png",
+           "-4": "images//black_rook.png",
+           "-5": "images//black_queen.png",
+           "-6": "images//black_king.png"}
 
 # FUNCTION DEFINITIONS
 def raise_frame(frame):
     frame.tkraise()
+
+b = board()
+
+def refresh():
+    state = b.get_state()
+    x_coord = 60
+    y_coord = 60
+    
+    for row in range(8):
+        for col in range(8):
+            if (state[row][col] != 0):
+
+                piece_img = PhotoImage(file="images//board.png")#file=img_ref[str(state[row][col])])
+                test_canvas.create_image(x_coord, y_coord, anchor=NW, image=piece_img)
+                
+            x_coord += 60
+        y_coord += 60
+        x_coord = 60
+    
 
 # GUI CREATION:
 # Create a root window of size 600x600px.
@@ -44,6 +64,7 @@ main_menu.place(x=0, y=0)
 
 # Singleplayer frame:
 ai_frame = Frame(root, width=600, height=600)
+test_canvas = Canvas(ai_frame, width=600, height=600)
 ai_frame.place(x=0, y=0)
 
 # Multiplayer frame:
@@ -102,9 +123,8 @@ viewer_button.place(x=300, y=290, anchor=CENTER)
 
 # Board background:
 board_img = PhotoImage(file="images//board.png")
-ai_board_container = Label(ai_frame, image=board_img)
-ai_board_container.image = board_img
-ai_board_container.place(relx=0.5, rely=0.5, anchor=CENTER)
+test_canvas.place(x=0, y=0, anchor=NW)
+test_canvas.create_image(0, 0, image=board_img, anchor=NW)
 
 # Back button
 ai_back_button = Button(ai_frame,
@@ -133,4 +153,6 @@ mp_back_button = Button(mp_frame,
 mp_back_button.place(rely=1, x=10, y=-30, anchor=W)
 
 raise_frame(main_menu)
+refresh()
+
 root.mainloop()

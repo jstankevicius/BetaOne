@@ -1,85 +1,70 @@
-class Board:
+import chess
+import numpy as np
 
-    def __init__(self):
-        """Initializes the default board state."""
+# ENCODINGS contains a symbol/one-hot pair, with the one-hot encoding
+# denoting the type of piece occupying the square.
+PIECES = ["r", "n", "b", "q", "k", "p", "R", "N", "B", "Q", "K", "P"]
+ENCODINGS = dict()
 
-        # 2D numerical representation of the current board state.
-        self.state = [
-            [-4, -2, -3, -5, -6, -3, -2, -4],
-            [-1, -1, -1, -1, -1, -1, -1, -1],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0],
-            [1, 1, 1, 1, 1, 1, 1, 1],
-            [4, 2, 3, 5, 6, 3, 2, 4]
-        ]
+# Settings (don't know why you would ever need to change these, but this is to keep stuff consistent):
+ROWS = 8
+COLS = 8
+PIECE_TYPES = 6
 
-        # Multiply by -1 after each turn to switch players.
-        self.turn = 1
 
-        # White castling rights:
-        self.wqcastle = 1
-        self.wkcastle = 1
+def create_encodings():
+    for i in range(len(PIECES)):
+        symbol = PIECES[i]
 
-        # Black castling rights:
-        self.bqcastle = 1
-        self.bkcastle = 1
+        encoding = np.zeros((12))
+        encoding[i] = 1
+        ENCODINGS[symbol] = encoding
 
-        # Move repetition count. Threefold repetition concludes in a draw.
-        self.repeats = 0
 
-    def reorient(self):
-        """Flips the color of every piece and the board position."""
-        pass
+def get_board_tensor(b):
 
-    def gen_legal(self):
-        """Generates a set of possible valid board states based on player."""
+    # The first two dimensions of the tensor represent the rank and file location
+    # of a square. The third dimension is a one-hot encoding of the piece occupying the
+    # square (all elements set to 0 for an empty square), with 6 for each piece type for
+    # white, and 6 for black.
 
-        # This might get pretty expensive. Ew.
-        legal_moves = []
+    # Another implementation would be to remove the multiplication by 2 and treat opposing pieces
+    # of the same type as negative values. I'm not sure if that would work, but it might be
+    # worth a try.
+    tensor = np.zeros((ROWS, COLS, PIECE_TYPES * 2))
 
-        # We first account for what player can actually make a move here. Then,
-        # depending on the sign, we may iterate through the board and generate
-        # possible moves for each piece.
-        for row in range(len(self.state)):
+    # The way chess denotes board locations is weird for most programming languages. We
+    # have to start at A8 first, since that is the top left item, and thus the first. However,
+    # the "first" square in chess is A1, at the bottom left. Thus, we start at the "last" row
+    # and move down, but start at the "first" column and move right.
+    for row in range(ROWS):
+        for col in range(COLS):
 
-            for col in range(len(self.state[row])):
+            # This is a simple conversion from computer-readable "rows" and "columns" to ones
+            # that can be understood with python-chess. During the very first iteration,
+            # chess_row should denote the top row of the board, and chess_col the leftmost column.
+            file_index = col
+            rank_index = ROWS - row - 1
 
-                tile = self.state[row][col]
+            try:
 
-                # Hacky.
-                piece_type = tile * self.turn
+                # We now allocate one-hot encodings based on those defined in ENCODINGS, corresponding
+                # to their respective pieces.
+                symbol = b.piece_at(chess.square(file_index, rank_index)).symbol()
 
-                # Check for piece availability:
-                if piece_type > 0:
+                tensor[row, col] = ENCODINGS[symbol]
 
-                    # Now iterate through possible piece types.
 
-                    # Generate all possible pawn moves:
-                    if tile == 1:
+            # python-chess throws an AttributeError if we call piece_at on an empty square.
+            # However, if it IS an empty square, we can simply set the corresponding
+            # one-hot encoding as well.
+            except AttributeError:
+                tensor[row, col] = np.zeros((12))
 
-                        # Check if pawn can move one tile forward:
-                        if self.state[row - self.turn][col] == 0:
-                            state_copy = self.state
-                            state_copy[row - self.turn][col] = 1 * self.turn
-                            legal_moves.append(state_copy)
+    return tensor
 
-                        # Check if pawn can move two tiles forward:
-                        if (self.state[row - 2*self.turn][col] == 0) and (self.state[row - self.turn][col] == 0):
-                            state_copy = self.state
-                            state_copy[row - 2*self.turn][col] = 1 * self.turn
-                            legal_moves.append(state_copy)
 
-                        # TODO: En passant
-
-                    # Generate all possible knight moves:
-
-                    # Generate all possible bishop moves:
-
-                    # Generate all possible rook moves:
-
-                    # Generate all possible queen moves:
-
-                    # Generate all possible king moves:
-
+# Testing:
+create_encodings()
+b = chess.Board()
+print(get_board_tensor(b))

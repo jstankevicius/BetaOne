@@ -1,5 +1,6 @@
 import chess
 import numpy as np
+# GLOBALS:
 
 # ENCODINGS contains a symbol/one-hot pair, with the one-hot encoding
 # denoting the type of piece occupying the square.
@@ -16,7 +17,7 @@ def create_encodings():
     for i in range(len(PIECES)):
         symbol = PIECES[i]
 
-        encoding = np.zeros((12))
+        encoding = np.zeros(12)
         encoding[i] = 1
         ENCODINGS[symbol] = encoding
 
@@ -28,15 +29,15 @@ def get_board_tensor(b):
     # square (all elements set to 0 for an empty square), with 6 for each piece type for
     # white, and 6 for black.
 
-    # Another implementation would be to remove the multiplication by 2 and treat opposing pieces
+    # Another implementation would remove the multiplication by 2 and treat opposing pieces
     # of the same type as negative values. I'm not sure if that would work, but it might be
     # worth a try.
     tensor = np.zeros((ROWS, COLS, PIECE_TYPES * 2))
 
     # The way chess denotes board locations is weird for most programming languages. We
-    # have to start at A8 first, since that is the top left item, and thus the first. However,
-    # the "first" square in chess is A1, at the bottom left. Thus, we start at the "last" row
-    # and move down, but start at the "first" column and move right.
+    # have to start at A8 first, since that is the top left item, and thus the first element
+    # in a 2D array. However, the "first" square in chess is A1, at the bottom left. Thus,
+    # we start at the "last" row and move down, and start at the "first" column and move right.
     for row in range(ROWS):
         for col in range(COLS):
 
@@ -54,17 +55,18 @@ def get_board_tensor(b):
 
                 tensor[row, col] = ENCODINGS[symbol]
 
-
             # python-chess throws an AttributeError if we call piece_at on an empty square.
             # However, if it IS an empty square, we can simply set the corresponding
             # one-hot encoding as well.
             except AttributeError:
-                tensor[row, col] = np.zeros((12))
+                tensor[row, col] = np.zeros(12)
 
     return tensor
-
 
 # Testing:
 create_encodings()
 b = chess.Board()
-print(get_board_tensor(b))
+tensor = get_board_tensor(b)
+
+# dumb
+#print(model.predict(np.array([tensor])))

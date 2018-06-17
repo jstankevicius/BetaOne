@@ -57,7 +57,7 @@ def create_policy_head(x):
 
     x = BatchNormalization(axis=1)(x)
     x = LeakyReLU()(x)
-    x = Dense(54, activation="linear", name="policy_head")(x)
+    x = Dense(64, activation="linear", name="policy_head")(x)
 
     return x
 
@@ -65,8 +65,8 @@ def create_policy_head(x):
 # Here we define the Agent class.
 class Agent:
 
-    def __init__(self, nn_model, *, epsilon=0.1):
-        self.nn = nn_model
+    def __init__(self,  *, epsilon=0.1):
+        self.nn = None
         self.epsilon = epsilon
 
     def play_move(self, board_state):
@@ -97,16 +97,8 @@ class Agent:
     def get_nn(self):
         return self.nn
 
-    def set_nn(self, net):
-        self.nn = net
-
     def reset(self):
         pass
 
     def train(self):
         pass
-
-
-a = Agent(None)
-a.build_nn()
-a.get_nn().summary()

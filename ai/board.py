@@ -123,15 +123,23 @@ def get_board_tensor(b):
     return tensor
 
 
+create_index_to_move_encodings()
+create_piece_encodings()
+b = chess.Board()
+tensor = get_board_tensor(b)
+
 
 # We now proceed to return a list of chess move objects:
 def get_moves_from_matrix(actions):
     # Just as above, the "first" element in the matrix corresponds to the top left
     # square on the board.
     moves = []
+    print(b.legal_moves)
 
     # While passing, we can immediately discard any moves that would move an opponent's
     # pieces.
+    move_dict = dict()
+
     for row in range(ROWS):
         for col in range(COLS):
 
@@ -141,7 +149,6 @@ def get_moves_from_matrix(actions):
 
             try:
                 from_square = chess.square(file_index, rank_index)
-                symbol = b.piece_at(from_square).symbol()
 
                 # Pieces are always white for the bot, so the symbol should always be a capital.
                 # INDEX_TO_MOVE and the action matrix are the same length. Thus, as we iterate
@@ -161,25 +168,31 @@ def get_moves_from_matrix(actions):
                     # We know what row and column we are at, and which directions of movement are
                     # available to us. We now test this against the engine's rules.
                     if (0 <= new_rank_index <= 7) and (0 <= new_file_index <= 7):
+
+                        # ew
                         to_square = chess.square(new_file_index.astype(np.int64), new_rank_index.astype(np.int64))
+
                         move = chess.Move(from_square, to_square)
-                        if move not in b.legal_moves:
-                            # If the move is illegal, we set the rating to 0. We renormalize the values later.
-                            actions[0, row, col][i] = 0
+                        if move in b.legal_moves:
+                            # Row, column, index, and rating
+                            move_dict[move.uci()] = [row, col, i, actions[row, col][i]]
                         else:
-                            print(move)
+                            # If the move is illegal, we set the rating to 0. We renormalize the values later.
+                            actions[row, col][i] = 0
+                    else:
+                        actions[row, col][i] = 0
 
             except AttributeError:
-                pass
+                print("AttributeError: " + str())
 
-    return moves
+    # Now that all illegal moves have been set to 0, we can renormalize the matrix.
+    total = np.sum(actions)
 
+    for key in move_dict.keys():
+        data = move_dict[key]
+        data[3] = data[3]/total
 
-create_index_to_move_encodings()
-create_piece_encodings()
-b = chess.Board()
-tensor = get_board_tensor(b)
-
+    return move_dict
 
 # Testing:
 a = Agent()
@@ -187,5 +200,7 @@ a.build_nn()
 
 
 # Sub this out for play_move later on
-action_matrix = a.get_nn().predict(np.array([tensor]))[1]
+action_matrix = a.get_nn().predict(np.array([tensor]))[1][0]
+print(action_matrix.shape)
 lmao = get_moves_from_matrix(action_matrix)
+print(lmao)

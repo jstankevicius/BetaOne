@@ -8,13 +8,14 @@ a.build_nn()
 
 board = Board()
 
-for i in range(SESSIONS):
-    a.play_move(board)
-    print("===========================")
-    print(board)
-    a.play_move(board)
-    print("===========================")
-    print(board)
 
-a.train("white")
+for i in range(1):
+    b = Board()
+    while not b.is_game_over(claim_draw=True):
+        a.play_move(board)
+        print("===========================")
+        print(board)
+        a.play_move(board)
+        print("===========================")
+        print(board)
 

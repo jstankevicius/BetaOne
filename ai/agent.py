@@ -275,7 +275,8 @@ class Agent:
         action_tensor = self.nn.predict(np.array([board_tensor]))[1][0]
         move_dict = get_moves_from_matrix(action_tensor, board_state)
 
-        best_result = ""
+        # TODO: fix this - crashes sometimes because a best uci is never set
+        best_result = "lmao"
 
         # TODO: fix, can't be bothered right now
         best_rating = -100
@@ -338,10 +339,9 @@ class Agent:
             board_inputs[i] = self.memory[winner][index][0]
             policy_outputs[i] = self.memory[winner][index][1]
 
-        self.nn.fit({"main_input": board_inputs},
+        self.nn.train_on_batch({"main_input": board_inputs},
                     {"policy_head": policy_outputs,
-                     "value_head": value_outputs},
-                    epochs=1)
+                     "value_head": value_outputs})
 
 
 create_index_to_move_encodings()

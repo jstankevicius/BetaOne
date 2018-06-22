@@ -9,7 +9,7 @@ SESSIONS = 10
 a = Agent()
 a.build_nn()
 
-pgn = open("chess_games.pgn")
+pgn = open("D://data//qchess//chess_games.pgn")
 
 for i in range(1000):
     game = chess.pgn.read_game(pgn)
@@ -43,6 +43,6 @@ for i in range(1000):
             inputs[k] = tr.mirror_board(board_states[index])
             outputs[k] = tr.move_to_matrix(moves[index], multiplier=-1)
 
-    a.get_nn().train_on_batch(inputs, outputs)
+    #a.train(inputs, outputs)
 
 a.get_nn().save("model.h5")

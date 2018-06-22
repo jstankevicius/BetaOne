@@ -146,32 +146,7 @@ class Agent:
     def reset(self):
         pass
 
-    def train(self, offset, *, batch_size=10):
-        memsize = len(self.memory)
-
-        inputs = np.zeros(shape=(batch_size, 8, 8, 12))
-        outputs = np.zeros(shape=(batch_size, 8, 8, 64))
-
-        # The inputs and outputs of the winning agent.
-        winning_sample = []
-
-        # The offset parameter defines where to begin sampling the winning positions
-        # from. Because each player in chess HAS to make a move (we are assuming that
-        # passes are not allowed), when black wins every other move from the second
-        # move contains the desired input and output. If white wins, there is no offset.
-        sample_index = offset
-        for i in range(int(math.ceil(memsize/2)) - 1):
-            winning_sample.append(self.memory[sample_index])
-            sample_index += 2
-
-        indices = np.random.randint(low=0, high=len(winning_sample), size=batch_size)
-
-        for i in range(len(indices)):
-            index = indices[i]
-
-            inputs[i] = winning_sample[index][0]
-            outputs[i] = winning_sample[index][1]
-
+    def train(self, inputs, outputs):
         self.nn.train_on_batch({"main_input": inputs},
                     {"policy_head": outputs})
 

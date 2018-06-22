@@ -121,8 +121,6 @@ class Agent:
             print("Stalemate: " + str(board_state.is_stalemate()))
             print("Result: " + board_state.result())
 
-
-
     def build_nn(self):
         main_input = Input(shape=(8, 8, 12), name="main_input")
         x = create_conv_block(main_input)
@@ -147,7 +145,7 @@ class Agent:
         pass
 
     def train(self, inputs, outputs):
-        self.nn.train_on_batch({"main_input": inputs},
-                    {"policy_head": outputs})
+        loss = self.nn.train_on_batch(inputs, outputs)
+        return loss
 
 

@@ -10,6 +10,7 @@ from chess import Board
 # denoting the type of piece occupying the square.
 PIECES = ("R", "N", "B", "Q", "K", "P", "r", "n", "b", "q", "k", "p")
 
+
 # TRANSLATION_TABLE contains a chess file (column letter) and the corresponding matrix column
 # number.
 TRANSLATION_TABLE = {
@@ -27,6 +28,23 @@ ENCODINGS = dict()
 # This array is populated with x and y coordinate changes corresponding
 # to each index of an action matrix.
 INDEX_TO_MOVE = np.zeros(shape=(64, 2), dtype=np.int64)
+
+
+def create_piece_encodings():
+    for i in range(len(PIECES)):
+        symbol = PIECES[i]
+
+        encoding = np.zeros(6)
+        index = i
+        sign = 1
+
+        if i > 5:
+            sign = -1
+            index -= 6
+            symbol = symbol.lower()
+
+        encoding[index] = sign
+        ENCODINGS[symbol] = encoding
 
 
 # The functions below deal with creating/converting matrices.
@@ -85,22 +103,13 @@ def create_index_to_move_encodings():
     INDEX_TO_MOVE[63] = np.array([-1, 2])
 
 
-def create_piece_encodings():
-    for i in range(len(PIECES)):
-        symbol = PIECES[i]
-
-        encoding = np.zeros(12)
-        encoding[i] = 1
-        ENCODINGS[symbol] = encoding
-
-
 def board_tensor(board_state):
 
     # The first two dimensions of the tensor represent the rank and file location
     # of a square. The third dimension is a one-hot encoding of the piece occupying the
     # square (all elements set to 0 for an empty square), with 6 for each piece type for
     # white, and 6 for black.
-    tensor = np.zeros((8, 8, 12))
+    tensor = np.zeros((8, 8, 6))
 
     # The way chess denotes board locations is weird for most programming languages. We
     # have to start at A8 first, since that is the top left item, and thus the first element
@@ -125,7 +134,7 @@ def board_tensor(board_state):
             # However, if it IS an empty square, we can simply set the corresponding
             # one-hot encoding as well.
             except AttributeError:
-                tensor[row, col] = np.zeros(12)
+                tensor[row, col] = np.zeros(6)
 
     return tensor
 
@@ -198,6 +207,7 @@ def matrix_to_move(actions, board_state):
     return move_dict
 
 
+# TODO: remove dependency on multiplier, switch to bool
 def move_to_matrix(move, *, multiplier=1):
     move_uci = move.uci()
 
@@ -237,25 +247,7 @@ def mirror_board(tensor):
     # I decided to make my own.
     mirrored_tensor = np.flip(np.copy(tensor), 0)
     mirrored_tensor = np.flip(mirrored_tensor, 1)
-
-    # Mirroring is relatively simple: we first vertically mirror the board positions, and then
-    # flip piece colors. The latter is slightly more difficult than the former, but doable.
-    for row in range(8):
-        for col in range(8):
-            index = np.argmax(mirrored_tensor[row, col])
-            # We first check if the square is not empty:
-            if np.sum(mirrored_tensor[row, col]) > 0:
-
-                # If the piece is white, flip to black by shifting index forward.
-                if index <= 5:
-                    index += 6
-
-                # Otherwise, flip to white.
-                else:
-                    index -= 6
-
-                mirrored_tensor[row, col] = np.zeros(12)
-                mirrored_tensor[row, col, index] = 1
+    mirrored_tensor *= -1
 
     return mirrored_tensor
 

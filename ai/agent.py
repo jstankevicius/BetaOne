@@ -8,11 +8,12 @@ import math
 import random
 import numpy as np
 import translator as tr
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
 
 # Settings:
 CONV_BLOCKS = 10
+
 
 # We define the functions used to create separate parts of the neural network here. The
 # input is processed using a series of convolutional blocks before being passed to the
@@ -122,27 +123,23 @@ class Agent:
             print("Result: " + board_state.result())
 
     def build_nn(self):
-        main_input = Input(shape=(8, 8, 12), name="main_input")
+        main_input = Input(shape=(8, 8, 6), name="main_input")
         x = create_conv_block(main_input)
 
         for i in range(CONV_BLOCKS):
             x = create_conv_block(x)
 
-        # value_head = create_value_head(x)
-        policy_head = create_policy_head(x)
-
-        model = Model(inputs=[main_input], outputs=[policy_head])
-        model.compile(loss={"policy_head": "categorical_crossentropy"},
-                      optimizer="sgd",
-                      loss_weights={"policy_head": 0.5})
+        value_head = create_value_head(x)
+        model = Model(inputs=[main_input], outputs=[value_head])
+        model.compile(loss="mse", optimizer="sgd")
 
         self.nn = model
 
     def get_nn(self):
         return self.nn
 
-    def reset(self):
-        pass
+    def load_nn(self, path):
+        self.nn = load_model(path)
 
     def train(self, inputs, outputs):
         loss = self.nn.train_on_batch(inputs, outputs)

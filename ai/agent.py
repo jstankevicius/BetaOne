@@ -14,7 +14,7 @@ from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
 
 # Settings:
-CONV_BLOCKS = 10
+CONV_BLOCKS = 15
 
 
 # We define the functions used to create separate parts of the neural network here. The
@@ -68,6 +68,7 @@ def create_policy_head(x):
 
     return x
 
+
 def get_children(board_state):
     """Returns all possible legal moves from board_state and the resulting
     board configurations."""
@@ -94,10 +95,9 @@ class Agent:
 
     def alphabeta_search(self, state, d=3):
         start = time.time()
-        state_tensor = tr.board_tensor(state)
-        evaluations = 0
 
         def max_value(state, alpha, beta, depth):
+            state_tensor = tr.board_tensor(state)
 
             if cutoff_test(depth):
                 self.evaluations += 1
@@ -116,7 +116,7 @@ class Agent:
             return v
 
         def min_value(state, alpha, beta, depth):
-
+            state_tensor = tr.board_tensor(state)
             if cutoff_test(depth):
                 self.evaluations += 1
                 return self.eval(state_tensor)
@@ -142,16 +142,21 @@ class Agent:
         children = get_children(state)
 
         best_pair = children[0]
+
+        # We search the first branch available, since no other information is given.
         best_score = min_value(best_pair[1], -1, 1, 0)
 
+        # We now iterate through all legal moves and get their scores:
         for x in children:
             x_score = min_value(x[1], -1, 1, 0)
             if x_score > best_score:
+                print("Found a better move than " + best_pair[0].uci() + ": " + x[0].uci())
                 best_pair, best_score = x, x_score
 
         end = time.time()
         elapsed = end - start
-        print("Evaluated " + str(self.evaluations) + " positions in " + str(elapsed))
+        print("Evaluated " + str(self.evaluations) + " positions in " + str(round(elapsed, 3)) + " seconds")
+
         return best_pair[0]
 
     def build_nn(self):

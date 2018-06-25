@@ -5,7 +5,7 @@ import translator as tr
 import numpy as np
 
 
-BATCHES = 256                       # how many batches are fed into the neural network
+BATCHES = 128                       # how many batches are fed into the neural network
 GAMES = 8                           # how many games we sample per batch
 MOVE_SAMPLES = 2                    # how many board positions are sampled per game
 BATCH_SIZE = GAMES * MOVE_SAMPLES   # total number of samples fed into the batch
@@ -28,7 +28,7 @@ game_offsets = chess.pgn.scan_offsets(pgn)
 # Print header
 print("Batch #\tGame #\tloss")
 
-for sess in range(16):
+for sess in range(256):
     agent = Agent()
     agent.load_nn("model//model.h5")
     print("Base evaluation: " + str(agent.get_nn().predict(np.array([base_tensor]))))

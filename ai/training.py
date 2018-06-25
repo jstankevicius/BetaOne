@@ -1,16 +1,14 @@
 from agent import Agent
 from chess import Board
-from keras.models import load_model
 import chess.pgn
 import translator as tr
 import numpy as np
-import time
 
 
 BATCHES = 256                       # how many batches are fed into the neural network
 GAMES = 8                           # how many games we sample per batch
-MOVE_SAMPLES = 2                    # how many board positions are sampled
-BATCH_SIZE = GAMES * MOVE_SAMPLES   # how many samples are trained on per batch
+MOVE_SAMPLES = 2                    # how many board positions are sampled per game
+BATCH_SIZE = GAMES * MOVE_SAMPLES   # total number of samples fed into the batch
 
 RESULT_DICT = {
     "1-0": 1,
@@ -19,15 +17,22 @@ RESULT_DICT = {
     "0-1": -1
 }
 
+base_board = Board()
+base_tensor = tr.board_tensor(base_board)
+
 
 pgn = open("D://data//qchess//chess_games.pgn")
 game_offsets = chess.pgn.scan_offsets(pgn)
 
 
+# Print header
+print("Batch #\tGame #\tloss")
+
 for sess in range(16):
-    print("Session " + str(sess))
     agent = Agent()
     agent.load_nn("model//model.h5")
+    print("Base evaluation: " + str(agent.get_nn().predict(np.array([base_tensor]))))
+
     for i in range(BATCHES):
         inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 6))
         outputs = np.zeros(shape=(BATCH_SIZE, 1))

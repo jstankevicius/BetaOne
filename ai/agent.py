@@ -6,7 +6,9 @@
 import chess
 import math
 import random
+import time
 import numpy as np
+from chess import Board
 import translator as tr
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
@@ -66,61 +68,91 @@ def create_policy_head(x):
 
     return x
 
+def get_children(board_state):
+    """Returns all possible legal moves from board_state and the resulting
+    board configurations."""
+    children = []
+
+    for move in board_state.legal_moves:
+        board_state.push(move)
+        children.append((move, board_state.copy()))
+        board_state.pop()
+
+    return children
 
 # Here we define the Agent class.
 class Agent:
 
     def __init__(self,  *, epsilon=0.1, gamma=0.9):
         self.nn = None
-        self.memory = []
         self.epsilon = epsilon
         self.gamma = gamma
+        self.evaluations = 0
 
-    def remember(self, state_matrix, action_matrix):
-        self.memory.append((state_matrix, action_matrix))
+    def eval(self, tensor):
+        return self.nn.predict(np.array([tensor]))[0][0]
 
-    def play_move(self, board_state):
-        board_tensor = tr.board_tensor(board_state)
-        action_tensor = self.nn.predict(np.array([board_tensor]))[0]
-        move_dict = tr.matrix_to_move(action_tensor, board_state)
+    def alphabeta_search(self, state, d=3):
+        start = time.time()
+        state_tensor = tr.board_tensor(state)
+        evaluations = 0
 
-        # Select a random move:
-        try:
-            key = random.choice(list(move_dict))
+        def max_value(state, alpha, beta, depth):
 
-            best_move = {
-                "uci": key,
-                "row": move_dict[key][0],
-                "col": move_dict[key][1],
-                "index": move_dict[key][2],
-                "rating": move_dict[key][1]
-            }
+            if cutoff_test(depth):
+                self.evaluations += 1
+                return self.eval(state_tensor)
 
-            if np.random.rand() > self.epsilon:
-                for uci in move_dict.keys():
-                    move = move_dict[uci]
-                    rating = move[3]
-                    if rating > best_move["rating"]:
-                        best_move["uci"] = uci
-                        best_move["row"] = move[0]
-                        best_move["col"] = move[1]
-                        best_move["index"] = move[2]
-                        best_move["rating"] = move[3]
+            v = -1
 
-            # Play the actual move:
-            board_state.push(chess.Move.from_uci(best_move["uci"]))
+            for (a, s) in get_children(state):
+                v = max(v, min_value(s, alpha, beta, depth + 1))
 
-            # Reformat matrix and remember:
-            perfect_output = np.zeros(shape=(8, 8, 64))
-            perfect_output[best_move["row"], best_move["col"], best_move["index"]] = 1
+                if v >= beta:
+                    return v
 
-            self.remember(board_tensor, action_tensor)
+                alpha = max(alpha, v)
 
-        except IndexError:
-            print("IndexError encountered with this configuration:")
-            print(board_state)
-            print("Stalemate: " + str(board_state.is_stalemate()))
-            print("Result: " + board_state.result())
+            return v
+
+        def min_value(state, alpha, beta, depth):
+
+            if cutoff_test(depth):
+                self.evaluations += 1
+                return self.eval(state_tensor)
+
+            v = 1
+
+            for (a, s) in get_children(state):
+                v = min(v, max_value(s, alpha, beta, depth + 1))
+
+                if v <= alpha:
+                    return v
+
+                beta = min(beta, v)
+
+            return v
+
+        # Body of alphabeta_search starts here:
+        # The default test cuts off at depth d or at a terminal state
+        cutoff_test = lambda depth: depth > d
+
+        # We now have a list of tuple pairs of actions and their resulting board
+        # configurations.
+        children = get_children(state)
+
+        best_pair = children[0]
+        best_score = min_value(best_pair[1], -1, 1, 0)
+
+        for x in children:
+            x_score = min_value(x[1], -1, 1, 0)
+            if x_score > best_score:
+                best_pair, best_score = x, x_score
+
+        end = time.time()
+        elapsed = end - start
+        print("Evaluated " + str(self.evaluations) + " positions in " + str(elapsed))
+        return best_pair[0]
 
     def build_nn(self):
         main_input = Input(shape=(8, 8, 6), name="main_input")
@@ -138,6 +170,9 @@ class Agent:
     def get_nn(self):
         return self.nn
 
+    def play_move(self, state):
+        return self.alphabeta_search(state)
+
     def load_nn(self, path):
         self.nn = load_model(path)
 
@@ -146,3 +181,7 @@ class Agent:
         return loss
 
 
+a = Agent()
+a.load_nn("model//model.h5")
+b = Board()
+print(a.play_move(b))

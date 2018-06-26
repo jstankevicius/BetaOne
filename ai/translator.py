@@ -103,6 +103,18 @@ def create_index_to_move_encodings():
     INDEX_TO_MOVE[63] = np.array([-1, 2])
 
 
+def get_destinations(uci):
+    from_file = uci[0]
+    from_rank = int(uci[1]) - 1
+    to_file = uci[2]
+    to_rank = int(uci[3]) - 1
+
+    # Compute indices:
+    from_file = TRANSLATION_TABLE[from_file]
+    to_file = TRANSLATION_TABLE[to_file]
+    return from_file, from_rank, to_file, to_rank
+
+
 def board_tensor(board_state):
 
     # The first two dimensions of the tensor represent the rank and file location

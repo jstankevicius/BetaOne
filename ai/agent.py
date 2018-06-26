@@ -4,8 +4,7 @@
 # paper on AlphaGo Zero, namely the "dual-conv" variation, with some adjustments.
 
 import chess
-import math
-import random
+import chess.pgn
 import time
 import numpy as np
 from chess import Board
@@ -80,6 +79,85 @@ def get_children(board_state):
         board_state.pop()
 
     return children
+
+
+class Node:
+
+    def __init__(self, name):
+        self.name = name
+        self.won = 0
+        self.total = 0
+        self.moves = []
+
+    def get_name(self):
+        return self.name
+
+    def get_moves(self):
+        return self.moves
+
+    def get_won(self):
+        return self.won
+
+    def get_total(self):
+        return self.total
+
+    def update_won(self):
+        self.won += 1
+
+    def update_total(self):
+        self.total += 1
+
+    def add_node(self, node):
+        self.moves.append(node)
+
+    def select(self, uci):
+        for node in self.moves:
+            if node.get_name() == uci:
+                return node
+        return None
+
+    def contains(self, uci):
+        for node in self.moves:
+            if node.get_name() == uci:
+                return True
+        return False
+
+
+def create_opening_tree(structure_games=1000, stat_games=100000, d=6):
+    assert structure_games + stat_games <= 500000
+    file_number = 17600000
+    total_nodes = 0
+
+    base_node = Node("base_node")
+
+    for i in range(structure_games):
+        pgn = open("D://data//qchess//games//" + str(file_number + i) + ".pgn")
+        game = chess.pgn.read_game(pgn)
+
+        # The current node we are at.
+        current_node = base_node
+        depth = 0
+
+        for move in game.main_line():
+            if depth < d:
+                uci = move.uci()
+                if current_node.contains(uci):
+                    current_node = current_node.select(uci)
+                else:
+                    new_node = Node(uci)
+                    total_nodes += 1
+                    current_node.add_node(new_node)
+                    current_node = new_node
+
+                depth += 1
+
+    print("Total nodes: " + str(total_nodes))
+    return base_node
+
+node = create_opening_tree()
+for n in node.get_moves():
+    print(n.get_name())
+
 
 # Here we define the Agent class.
 class Agent:
@@ -184,9 +262,3 @@ class Agent:
     def train(self, inputs, outputs):
         loss = self.nn.train_on_batch(inputs, outputs)
         return loss
-
-
-a = Agent()
-a.load_nn("model//model.h5")
-b = Board()
-print(a.play_move(b))

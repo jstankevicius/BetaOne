@@ -7,7 +7,6 @@ import chess
 import chess.pgn
 import time
 import numpy as np
-from chess import Board
 import translator as tr
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
@@ -123,7 +122,7 @@ class Node:
         return False
 
 
-def create_opening_tree(structure_games=1000, stat_games=100000, d=6):
+def create_opening_tree(structure_games=100, stat_games=100000, d=6):
     assert structure_games + stat_games <= 500000
     file_number = 17600000
     total_nodes = 0
@@ -138,11 +137,14 @@ def create_opening_tree(structure_games=1000, stat_games=100000, d=6):
         current_node = base_node
         depth = 0
 
+        print(game.headers["Result"])
+
         for move in game.main_line():
             if depth < d:
                 uci = move.uci()
                 if current_node.contains(uci):
                     current_node = current_node.select(uci)
+                    current_node.update_total()
                 else:
                     new_node = Node(uci)
                     total_nodes += 1

@@ -5,8 +5,8 @@
 
 import chess
 import chess.pgn
-from chess import Board
 import time
+from chess import Board
 from queue import PriorityQueue
 import numpy as np
 import translator as tr
@@ -30,12 +30,14 @@ PIECE_VALUES = {
 # value and policy heads. Activation functions and auxillary layers follow those described
 # in the paper.
 def create_conv_block(x):
-    # Convolution block:
+    """Adds a convolution block to an existing tower x."""
     x = Conv2D(filters=64,
                kernel_size=3,
                strides=1,
                padding="same",
                activation="relu",
+
+               # Should I be doing this as channels_first? Is there a difference?
                data_format="channels_last")(x)
 
     x = BatchNormalization(axis=1)(x)
@@ -45,6 +47,8 @@ def create_conv_block(x):
 
 
 def create_value_head(x):
+    """Adds a value head to an existing tower x. Outputs are activated via tanh, meaning
+    they are between -1 and 1."""
     x = Conv2D(filters=1,
                kernel_size=1,
                strides=1,
@@ -62,33 +66,7 @@ def create_value_head(x):
     return x
 
 
-def create_policy_head(x):
-    x = Conv2D(filters=12,
-               kernel_size=1,
-               strides=1,
-               data_format="channels_last",
-               padding="same",
-               activation="linear")(x)
-
-    x = BatchNormalization(axis=1)(x)
-    x = LeakyReLU()(x)
-    x = Dense(64, activation="linear", name="policy_head")(x)
-
-    return x
-
-def old(board):
-
-    children = []
-
-    for move in board.legal_moves:
-        copy = board.copy()
-        copy.push(move)
-        children.append((move, copy))
-
-    return children
-
-
-def get_children(board):
+def get_legal_moves(board):
     """Returns all possible legal moves from board_state and the resulting
     board configurations. Pairs are ranked in the following order:
     1. Does the move result in checkmate? If yes, we delete all other moves
@@ -101,89 +79,157 @@ def get_children(board):
 
     3. Everything else? The next order is still to be determined.
     """
-    children = PriorityQueue()
+
+    # Because we rank each move, a PriorityQueue object is necessary for quick ordering
+    # of each move by its utility without having to compute it elsewhere.
+    legal_moves = PriorityQueue()
+
+    # This is simply the index of the move in board.legal_moves. However, this is useful as
+    # an arbitrary rank in a PriorityQueue, as moves that do not capture technically have
+    # the same basic utility. Captures sometimes end up with the same utility as well.
     move_number = 0
 
     for move in board.legal_moves:
         copy = board.copy()
+
+        # copy contains the resulting board configuration after the move is played.
         copy.push(move)
+
+        # We set the default move value to something very high; this is because items
+        # in a PriorityQueue get ranked by the "lowest" priority first. Thus, moves with
+        # a high value will actually be ranked last.
         move_value = 10000
 
         # Check for checkmate:
-        if board.is_checkmate():
+        if copy.is_checkmate():
 
-            # Immediately construct PQ and return it:
-            children = PriorityQueue()
-            children.put((move_value, move_number, (move, copy)))
-            return children
+            # If the resulting action is a checkmate, we need only return one
+            # element, as all others are pointless to evaluate. Checkmate is
+            # automatically the highest-valued board configuration. The agent
+            # should later check if the initial size of the PriorityQueue
+            # returned is 1, as this will indicate a checkmating move.
+            legal_moves = PriorityQueue()
+            legal_moves.put((move_value, move_number, (move, copy)))
+            return legal_moves
 
         # Check for capture:
-        from_file, from_rank, to_file, to_rank = tr.get_destinations(move.uci())
-        
-        try:
-            capturing_piece = board.piece_at(chess.square(from_file, from_rank))
-            capturing_piece_value = PIECE_VALUES[capturing_piece.symbol().upper()]
+        if board.is_capture(move):
+            uci = move.uci()
 
-            captured_piece = board.piece_at(chess.square(to_file, to_rank))
+            # Some locations:
+            from_file = chess.FILE_NAMES.index(uci[0])
+            from_rank = int(uci[1]) - 1
+            to_file = chess.FILE_NAMES.index(uci[2])
+            to_rank = int(uci[3]) - 1
+
+            from_square = chess.square(from_file, from_rank)
+            to_square = chess.square(to_file, to_rank)
+
+            capturing_piece = board.piece_at(from_square)
+            captured_piece = board.piece_at(to_square)
+
+            # Check for en passant capture:
+            if board.ep_square == to_square:
+                to_rank -= 1
+                to_square = chess.square(to_file, to_rank)
+                captured_piece = board.piece_at(to_square)
+
+            # TODO: if pawn captures into promotion, this gives a bad value.
+            capturing_piece_value = PIECE_VALUES[capturing_piece.symbol().upper()]
             captured_piece_value = PIECE_VALUES[captured_piece.symbol().upper()]
 
+            # TODO: We have a bit of a problem here. What happens if this is the endgame
+            # TODO: and the king is suppsed to be highly active on the board? Should his
+            # TODO: move priority initially be high, and then slowly decrease as we enter
+            # TODO: the endgame? This is the most likely solution.
             move_value = capturing_piece_value - captured_piece_value
 
-        except AttributeError:
-            pass
 
-        children.put((move_value, move_number, (move, copy)))
+        legal_moves.put((move_value, move_number, (move, copy)))
         move_number += 1
 
-    return children
+    return legal_moves
 
 
+# This is a move node that we use to construct an opening tree. Each node contains some
+# stats and its child nodes, which indicate the typical responses to a particular move.
 class Node:
 
     def __init__(self, name):
         self.name = name
+        self.visits = 0
         self.won = 0
-        self.total = 0
         self.moves = []
 
     def get_name(self):
+        """Retrieves the node's name (I.E. the current move)."""
         return self.name
 
     def get_moves(self):
+        """Returns the child nodes of the current node."""
         return self.moves
 
     def get_won(self):
+        """Returns the number of times this node has resulted in a win.
+        If we are using LeelaChessZero's PGN data as building material
+        for the tree, this method is redundant, as Leela never finishes games
+        in the dataset. However, this might be useful if we decide to go back
+        to the old GM dataset."""
         return self.won
 
-    def get_total(self):
-        return self.total
-
     def update_won(self):
+        """Increments the number of times this node has resulted in a win."""
         self.won += 1
 
-    def update_total(self):
-        self.total += 1
+    def get_visits(self):
+        """Returns the number of times the node has been visited (I.E. how many
+        times it has been played)."""
+        return self.visits
+
+    def update_visits(self):
+        """Increments the total number of times the node has been visited."""
+        self.visits += 1
 
     def add_node(self, node):
+        """Adds another node to the current one."""
         self.moves.append(node)
 
     def select(self, uci):
+        """Returns a node from the node's children based on name, or None if
+        no such UCI exists."""
         for node in self.moves:
             if node.get_name() == uci:
                 return node
         return None
 
     def contains(self, uci):
+        """Checks whether or not a given UCI string exists as a name of one
+        of the node's children."""
         for node in self.moves:
             if node.get_name() == uci:
                 return True
         return False
 
 
-def create_opening_tree(games=20000, d=8, pruning_threshold=0.05):
+def create_opening_tree(games=20000, d=8):
+    """Creates a tree of nodes of a given depth out of a given number of games."""
+
+    # TODO: implement pruning_threshold parameter that determines whether or not we
+    # TODO: should delete a certain node once its play frequency is lower than
+    # TODO: pruning_threshold. This would require another iteration over the tree
+    # TODO: at the end of the function.
+
+    # Depending on what data we use as building material, the body of this function
+    # could change drastically. LCZ's data is separated into 500,000 files, whereas
+    # the GM games are contained within one.
+
+    # Denotes the first file's number in the directory. Only usable with LCZ data.
     file_number = 17600000
+
+    # The total number of nodes in the tree.
     total_nodes = 0
 
+    # The root node.
     base_node = Node("base_node")
 
     for i in range(games):
@@ -198,7 +244,7 @@ def create_opening_tree(games=20000, d=8, pruning_threshold=0.05):
             for move in game.main_line():
                 if depth < d:
                     uci = move.uci()
-
+                    current_node.update_visits()
                     if current_node.contains(uci):
                         current_node = current_node.select(uci)
                     else:
@@ -207,7 +253,6 @@ def create_opening_tree(games=20000, d=8, pruning_threshold=0.05):
                         current_node.add_node(new_node)
                         current_node = new_node
 
-                    current_node.update_total()
                     depth += 1
 
         except AttributeError:
@@ -220,73 +265,88 @@ def create_opening_tree(games=20000, d=8, pruning_threshold=0.05):
     return base_node
 
 
-# Here we define the Agent class.
+# The agent is essentially an instantiable AI instance. Given a board, it can play a move
+# after performing going through search and evaluation steps.
 class Agent:
 
-    def __init__(self,  *, epsilon=0.1, gamma=0.9):
+    def __init__(self):
         self.nn = None
-        self.epsilon = epsilon
-        self.gamma = gamma
         self.evaluations = 0
 
     def eval(self, tensor):
+        """Returns a 'rating' of the given position, with 1 indicating a white
+        win and -1 indicating a black win, with 0 as draw or stalemate."""
         return self.nn.predict(np.array([tensor]))[0][0]
 
-    # TODO: clean up/document code
     def search(self, state, d=3):
+        """A tree search that utilizes alpha-beta pruning to cut down on processing
+        time. Returns a move with the highest rating assigned to it by the value network."""
+
+        # We monitor how long it actually takes for the agent to select an optimal move.
         start = time.time()
 
-        def max_value(state, alpha, beta, depth):
-            state_tensor = tr.board_tensor(state)
+        # The following is a fairly standard implementation of minimizer-maximizer agents.
+        # This is the "maximizer" function.
+        def max_value(board, alpha, beta, depth):
 
-            if cutoff_test(depth):
+            # TODO: implement tensor mirrors for white-black play
+            board_tensor = tr.board_tensor(board)
+
+            if depth > d or board.is_checkmate():
                 self.evaluations += 1
-                return self.eval(state_tensor)
+                return self.eval(board_tensor)
 
-            v = -1
+            # Because this is the maximizer (I.E., the value of an action can only go
+            # up), we set the value to the lowest possible score, which in tanh is -1.
+            value = -1
 
-            possible_moves = get_children(state)
+            possible_moves = get_legal_moves(board)
+
             while not possible_moves.empty():
                 a, s = possible_moves.get()[2]
-                v = max(v, min_value(s, alpha, beta, depth + 1))
+                value = max(value, min_value(s, alpha, beta, depth + 1))
 
-                if v >= beta:
-                    return v
+                # CUTOFF
+                if value >= beta:
+                    return value
 
-                alpha = max(alpha, v)
+                alpha = max(alpha, value)
 
-            return v
+            return value
 
-        def min_value(state, alpha, beta, depth):
-            state_tensor = tr.board_tensor(state)
-            if cutoff_test(depth):
+        # And this is the minimizer function.
+        def min_value(board, alpha, beta, depth):
+            # TODO: implement tensor mirrors for white-black play
+            board_tensor = tr.board_tensor(board)
+
+            # TODO: implement instant return on checkmate
+            if depth > d or board.is_checkmate():
                 self.evaluations += 1
-                return self.eval(state_tensor)
+                return self.eval(board_tensor)
 
-            v = 1
+            value = 1
 
-            possible_moves = get_children(state)
+            possible_moves = get_legal_moves(board)
+
             while not possible_moves.empty():
-                a, s = possible_moves.get()[2]
-                v = min(v, max_value(s, alpha, beta, depth + 1))
+                action, state = possible_moves.get()[2]
+                value = min(value, max_value(state, alpha, beta, depth + 1))
 
-                if v <= alpha:
-                    return v
+                # CUTOFF
+                if value <= alpha:
+                    return value
 
-                beta = min(beta, v)
+                beta = min(beta, value)
 
-            return v
+            return value
 
         # Body of alphabeta_search starts here:
         # The default test cuts off at depth d or at a terminal state
-        cutoff_test = lambda depth: depth > d or state.is_checkmate()
 
         # We now have a list of tuple pairs of actions and their resulting board
         # configurations.
-        children = get_children(state)
-
-        first_pair = children.get()[2]
-        best_pair = first_pair
+        children = get_legal_moves(state)
+        best_pair = children.get()[2]
 
         # We search the first branch available, since no other information is given.
         best_score = min_value(best_pair[1], -1, 1, 0)
@@ -297,6 +357,7 @@ class Agent:
             print("Evaluating " + x[2][0].uci())
 
             x_score = min_value(x[2][1], -1, 1, 0)
+
             if x_score > best_score:
                 print("Found a better move than " + best_pair[0].uci() + ": " + x[2][0].uci())
                 best_pair, best_score = x[2], x_score
@@ -332,9 +393,3 @@ class Agent:
     def train(self, inputs, outputs):
         loss = self.nn.train_on_batch(inputs, outputs)
         return loss
-
-
-a = Agent()
-b = Board()
-a.load_nn("model//model.h5")
-a.play_move(b)

@@ -9,7 +9,7 @@ import chess
 # populates each list.
 PIECES = ("R", "N", "B", "Q", "K", "P", "r", "n", "b", "q", "k", "p")
 
-ZOBRIST_TABLE = np.empty(shape=(64, 12), dtype=np.uint64)
+ZOBRIST_TABLE = np.empty(shape=(64, 12), dtype=np.uint32)
 
 PIECE_ENCODINGS = {
     "R": np.array([1, 0, 0, 0, 0, 0]),

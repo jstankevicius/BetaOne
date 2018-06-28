@@ -15,6 +15,9 @@ from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Leak
 
 # Settings:
 CONV_BLOCKS = 15
+
+# [MIN_VALUE, MAX_VALUE, MODIFIED]
+ZOBRIST_TABLE = np.zeros(shape=(2**20, 3))
 PIECE_VALUES = {
     "P": 100,
     "N": 350,
@@ -143,7 +146,6 @@ def get_legal_moves(board):
             # TODO: move priority initially be high, and then slowly decrease as we enter
             # TODO: the endgame? This is the most likely solution.
             move_value = capturing_piece_value - captured_piece_value
-
 
         legal_moves.put((move_value, move_number, (move, copy)))
         move_number += 1
@@ -289,8 +291,9 @@ class Agent:
         # This is the "maximizer" function.
         def max_value(board, alpha, beta, depth):
 
-            # TODO: implement tensor mirrors for white-black play
             board_tensor = tr.board_tensor(board)
+            zobrist = tr.get_board_zobrist(board)
+            zobrist_index = np.mod(zobrist, ZOBRIST_TABLE.shape[0]).astype(np.uint64)
 
             if depth > d or board.is_checkmate():
                 self.evaluations += 1
@@ -304,7 +307,18 @@ class Agent:
 
             while not possible_moves.empty():
                 a, s = possible_moves.get()[2]
-                value = max(value, min_value(s, alpha, beta, depth + 1))
+
+                # We check if the max value has already been computed in the Zobrist
+                # table.
+
+                if ZOBRIST_TABLE[zobrist_index, 2] == 1:
+                    min_v = ZOBRIST_TABLE[zobrist_index, 0]
+                else:
+                    min_v = min_value(s, alpha, beta, depth + 1)
+                    ZOBRIST_TABLE[zobrist_index, 0] = min_v
+                    ZOBRIST_TABLE[zobrist_index, 2] = 1
+
+                value = max(value, min_v)
 
                 # CUTOFF
                 if value >= beta:
@@ -316,8 +330,10 @@ class Agent:
 
         # And this is the minimizer function.
         def min_value(board, alpha, beta, depth):
-            # TODO: implement tensor mirrors for white-black play
+
             board_tensor = tr.board_tensor(board)
+            zobrist = tr.get_board_zobrist(board)
+            zobrist_index = np.mod(zobrist, ZOBRIST_TABLE.shape[0]).astype(np.uint64)
 
             # TODO: implement instant return on checkmate
             if depth > d or board.is_checkmate():
@@ -330,7 +346,15 @@ class Agent:
 
             while not possible_moves.empty():
                 action, state = possible_moves.get()[2]
-                value = min(value, max_value(state, alpha, beta, depth + 1))
+
+                if ZOBRIST_TABLE[zobrist_index, 2] == 1:
+                    max_v = ZOBRIST_TABLE[zobrist_index, 1]
+                else:
+                    max_v = max_value(state, alpha, beta, depth + 1)
+                    ZOBRIST_TABLE[zobrist_index, 1] = max_v
+                    ZOBRIST_TABLE[zobrist_index, 2] = 1
+
+                value = min(value, max_v)
 
                 # CUTOFF
                 if value <= alpha:
@@ -359,7 +383,7 @@ class Agent:
             x_score = min_value(x[2][1], -1, 1, 0)
 
             if x_score > best_score:
-                print("Found a better move than " + best_pair[0].uci() + ": " + x[2][0].uci())
+                #print("Found a better move than " + best_pair[0].uci() + ": " + x[2][0].uci())
                 best_pair, best_score = x[2], x_score
 
         end = time.time()

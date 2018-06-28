@@ -5,8 +5,8 @@ import translator as tr
 import numpy as np
 
 
-BATCHES = 256                       # how many batches are fed into the neural network
-GAMES = 32                          # how many games we sample per batch
+BATCHES = 128                       # how many batches are fed into the neural network
+GAMES = 16                          # how many games we sample per batch
 MOVE_SAMPLES = 2                    # how many board positions are sampled per game
 BATCH_SIZE = GAMES * MOVE_SAMPLES   # total number of samples fed into the batch
 
@@ -34,11 +34,11 @@ for sess in range(128):
     BASE_EVALUATION = 0
 
     agent = Agent()
-    agent.load_nn("model//model.h5")
+    agent.load_nn("model//new_model.h5")
     print(str(sess) + ".\tBase evaluation: " + str(agent.get_nn().predict(np.array([base_tensor]))))
 
     for i in range(BATCHES):
-        inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 6))
+        inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 12))
         outputs = np.zeros(shape=(BATCH_SIZE, 1))
 
         a = 0
@@ -78,4 +78,4 @@ for sess in range(128):
         loss = agent.train(inputs, outputs)
         TOTAL_LOSS += loss
 
-    agent.get_nn().save("model//model.h5")
+    agent.get_nn().save("model//new_model.h5")

@@ -16,7 +16,7 @@ from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Leak
 # Settings:
 CONV_BLOCKS = 15
 
-# ZOBRIST_TABLE = np.full((2**32), -10)
+# ZOBRIST_TABLE = np.full((2**32), -10, dtype=np.float64)
 COMPUTED_HASHES = []
 
 PIECE_VALUES = {
@@ -281,9 +281,8 @@ class Agent:
         win and -1 indicating a black win, with 0 as draw or stalemate."""
         return self.nn.predict(np.array([tensor]))[0][0]
 
+    """
     def search(self, state, d=3):
-        """A tree search that utilizes alpha-beta pruning to cut down on processing
-        time. Returns a move with the highest rating assigned to it by the value network."""
 
         # We monitor how long it actually takes for the agent to select an optimal move.
         start = time.time()
@@ -293,8 +292,6 @@ class Agent:
         def max_value(board, alpha, beta, depth):
 
             board_tensor = tr.board_tensor(board)
-            # zobrist = tr.get_board_zobrist(board)
-            # zobrist_index = zobrist
 
             if depth > d or board.is_checkmate():
                 self.evaluations += 1
@@ -307,7 +304,18 @@ class Agent:
 
             while not possible_moves.empty():
                 a, s = possible_moves.get()[2]
-                value = max(value, min_value(s, alpha, beta, depth + 1))
+
+                ##################################
+                # NEW ADDITION
+                zobrist = tr.get_board_zobrist(s)
+                if ZOBRIST_TABLE[zobrist] == -10:
+                    value = max(value, min_value(s, alpha, beta, depth + 1))
+                    ZOBRIST_TABLE[zobrist] = value
+
+                else:
+                    value = ZOBRIST_TABLE[zobrist]
+
+                # value = max(value, min_value(s, alpha, beta, depth + 1))
 
                 # CUTOFF
                 if value >= beta:
@@ -332,7 +340,17 @@ class Agent:
 
             while not possible_moves.empty():
                 action, state = possible_moves.get()[2]
-                value = min(value, max_value(state, alpha, beta, depth + 1))
+
+                ##################################
+                # NEW ADDITION
+                zobrist = tr.get_board_zobrist(state)
+                if ZOBRIST_TABLE[zobrist] == -10:
+                    value = min(value, max_value(state, alpha, beta, depth + 1))
+                    ZOBRIST_TABLE[zobrist] = value
+                else:
+                    value = ZOBRIST_TABLE[zobrist]
+
+                # value = min(value, max_value(state, alpha, beta, depth + 1))
 
                 # CUTOFF
                 if value <= alpha:
@@ -369,9 +387,10 @@ class Agent:
         print("Evaluated " + str(self.evaluations) + " positions in " + str(round(elapsed, 3)) + " seconds")
 
         return best_pair[0]
+    """
 
     def build_nn(self):
-        main_input = Input(shape=(8, 8, 6), name="main_input")
+        main_input = Input(shape=(8, 8, 12), name="main_input")
         x = create_conv_block(main_input)
 
         for i in range(CONV_BLOCKS):
@@ -386,8 +405,8 @@ class Agent:
     def get_nn(self):
         return self.nn
 
-    def play_move(self, state):
-        return self.search(state)
+    #def play_move(self, state):
+    #    return self.search(state)
 
     def load_nn(self, path):
         self.nn = load_model(path)

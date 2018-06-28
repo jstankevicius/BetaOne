@@ -12,25 +12,24 @@ PIECES = ("R", "N", "B", "Q", "K", "P", "r", "n", "b", "q", "k", "p")
 ZOBRIST_TABLE = np.empty(shape=(64, 12), dtype=np.uint32)
 
 PIECE_ENCODINGS = {
-    "R": np.array([1, 0, 0, 0, 0, 0]),
-    "N": np.array([0, 1, 0, 0, 0, 0]),
-    "B": np.array([0, 0, 1, 0, 0, 0]),
-    "Q": np.array([0, 0, 0, 1, 0, 0]),
-    "K": np.array([0, 0, 0, 0, 1, 0]),
-    "P": np.array([0, 0, 0, 0, 0, 1]),
-    "r": np.array([-1, 0, 0, 0, 0, 0]),
-    "n": np.array([0, -1, 0, 0, 0, 0]),
-    "b": np.array([0, 0, -1, 0, 0, 0]),
-    "q": np.array([0, 0, 0, -1, 0, 0]),
-    "k": np.array([0, 0, 0, 0, -1, 0]),
-    "p": np.array([0, 0, 0, 0, 0, -1]),
-
+    "R": np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    "N": np.array([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    "B": np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+    "Q": np.array([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]),
+    "K": np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]),
+    "P": np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]),
+    "r": np.array([0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
+    "n": np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
+    "b": np.array([0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]),
+    "q": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),
+    "k": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]),
+    "p": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
 }
 
 
 def get_board_zobrist(board):
     """Returns a Zobrist hash of the board."""
-    h = np.uint64(0)
+    h = np.uint32(0)
 
     for i in range(64):
         square = chess.SQUARES[i]
@@ -56,7 +55,7 @@ def board_tensor(board):
     # of a square. The third dimension is a one-hot encoding of the piece occupying the
     # square (all elements set to 0 for an empty square), with 6 for each piece type for
     # white, and 6 for black.
-    tensor = np.zeros((8, 8, 6))
+    tensor = np.zeros((8, 8, 12))
 
     # The way chess denotes board locations is weird for most programming languages. We
     # have to start at A8 first, since that is the top left item, and thus the first element
@@ -81,7 +80,7 @@ def board_tensor(board):
             # However, if it IS an empty square, we can simply set the corresponding
             # one-hot encoding as well.
             except AttributeError:
-                tensor[row, col] = np.zeros(6)
+                tensor[row, col] = np.zeros(12)
 
     return tensor
 
@@ -90,6 +89,6 @@ def mirror_tensor(tensor):
     """Mirrors a board tensor vertically and horizontally and flips the color of each piece."""
     mirrored_tensor = np.flip(np.copy(tensor), 0)
     mirrored_tensor = np.flip(mirrored_tensor, 1)
-    mirrored_tensor *= -1
+    # mirrored_tensor *= -1
 
     return mirrored_tensor

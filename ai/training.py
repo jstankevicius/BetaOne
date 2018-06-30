@@ -4,8 +4,7 @@ import chess.pgn
 import translator as tr
 import numpy as np
 
-
-BATCHES = 128                       # how many batches are fed into the neural network
+BATCHES = 512                       # how many batches are fed into the neural network
 GAMES = 16                          # how many games we sample per batch
 MOVE_SAMPLES = 2                    # how many board positions are sampled per game
 BATCH_SIZE = GAMES * MOVE_SAMPLES   # total number of samples fed into the batch
@@ -17,65 +16,40 @@ RESULT_DICT = {
     "0-1": -1
 }
 
-base_board = Board()
-base_tensor = tr.board_tensor(base_board)
+# The number of the first game
+START = 17600000
 
+agent = Agent()
+agent.build_nn()
 
-pgn = open("D://data//qchess//chess_games.pgn")
-game_offsets = chess.pgn.scan_offsets(pgn)
+for batch in range(BATCHES):
 
-games = 0
+    inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 12))
+    outputs = np.zeros(shape=(BATCH_SIZE, 1))
+    index_in_batch = 0
+    print(batch)
 
-for sess in range(128):
+    for game_number in range(GAMES):
+        pgn = open("D://data//qchess//games//" + str(START + game_number) + ".pgn")
+        game = chess.pgn.read_game(pgn)
+        board = game.board()
 
-    # We instantiate some numbers that help us keep track of the network's progress.
-    VALUE_ERRORS = 0
-    TOTAL_LOSS = 0
-    BASE_EVALUATION = 0
+        positions = []
 
-    agent = Agent()
-    agent.load_nn("model//new_model.h5")
-    print(str(sess) + ".\tBase evaluation: " + str(agent.get_nn().predict(np.array([base_tensor]))))
+        for move in game.main_line():
+            positions.append(tr.board_tensor(board))
+            board.push(move)
 
-    for i in range(BATCHES):
-        inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 12))
-        outputs = np.zeros(shape=(BATCH_SIZE, 1))
+        sampled_indices = np.random.randint(low=0, high=len(positions), size=MOVE_SAMPLES, dtype=np.uint32)
 
-        a = 0
+        for i in range(MOVE_SAMPLES):
+            sample_index = sampled_indices[i]
 
-        for j in range(GAMES):
-            games += 1
-            offset = next(game_offsets)
-            pgn.seek(offset)
-            game = chess.pgn.read_game(pgn)
-            board = game.board()
+            inputs[index_in_batch] = positions[sample_index]
+            outputs[index_in_batch] = RESULT_DICT[board.result(claim_draw=True)]
 
-            board_states = []
+            index_in_batch += 1
 
-            # Iterate through moves and add them to a list:
-            for move in game.main_line():
-                board_states.append(tr.board_tensor(board))
-                board.push(move)
+            # TODO: handle errors
 
-            result = game.headers["Result"]
-
-            # Now sample 8 random moves per game:
-            indices = np.random.randint(low=0, high=len(board_states), size=MOVE_SAMPLES)
-
-            for k in range(MOVE_SAMPLES):
-                index = indices[k]
-
-                # If the index is even, we know white played the move.
-                if index % 2 == 0:
-                    inputs[a] = board_states[index]
-                    outputs[a] = RESULT_DICT[result]
-                else:
-                    inputs[a] = tr.mirror_tensor(board_states[index])
-                    outputs[a] = -RESULT_DICT[result]
-
-                a += 1
-
-        loss = agent.train(inputs, outputs)
-        TOTAL_LOSS += loss
-
-    agent.get_nn().save("model//new_model.h5")
+    agent.train(inputs, outputs)

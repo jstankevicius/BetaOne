@@ -16,8 +16,15 @@ from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Leak
 # Settings:
 CONV_BLOCKS = 15
 
-# ZOBRIST_TABLE = np.full((2**32), -10, dtype=np.float64)
+#ZOBRIST_TABLE = np.full((2**32), -10, dtype=np.float16)
 COMPUTED_HASHES = []
+
+RESULT_DICT = {
+    "1-0": 1,
+    "1/2-1/2": 0,
+    "*": 0,
+    "0-1": -1
+}
 
 PIECE_VALUES = {
     "P": 100,
@@ -133,10 +140,14 @@ def get_legal_moves(board):
             captured_piece = board.piece_at(to_square)
 
             # Check for en passant capture:
-            if board.ep_square == to_square:
-                to_rank -= 1
-                to_square = chess.square(to_file, to_rank)
-                captured_piece = board.piece_at(to_square)
+            if board.is_en_passant(move):
+
+                # The difference in ranks in EP capture is always 1 or -1. We can
+                # use this to shift the location of where we think the captured piece
+                # is.
+                rank_diff = to_rank - from_rank
+                ep_capture_square = chess.square(to_file, to_rank - rank_diff)
+                captured_piece = board.piece_at(ep_capture_square)
 
             # TODO: if pawn captures into promotion, this gives a bad value.
             capturing_piece_value = PIECE_VALUES[capturing_piece.symbol().upper()]
@@ -161,28 +172,34 @@ class Node:
     def __init__(self, name):
         self.name = name
         self.visits = 0
-        self.won = 0
-        self.moves = []
+        self.total_score = 0
+        self.children = []
+        self.state = Board()
+        self.parent = None
 
     def get_name(self):
         """Retrieves the node's name (I.E. the current move)."""
         return self.name
 
-    def get_moves(self):
+    def get_children(self):
         """Returns the child nodes of the current node."""
-        return self.moves
+        return self.children
 
-    def get_won(self):
-        """Returns the number of times this node has resulted in a win.
-        If we are using LeelaChessZero's PGN data as building material
-        for the tree, this method is redundant, as Leela never finishes games
-        in the dataset. However, this might be useful if we decide to go back
-        to the old GM dataset."""
-        return self.won
+    def get_state(self):
+        return self.state
 
-    def update_won(self):
-        """Increments the number of times this node has resulted in a win."""
-        self.won += 1
+    def set_state(self, board):
+        self.state = board
+
+    def get_total(self):
+        return self.total_score
+
+    def get_parent(self):
+        """Returns the parent node."""
+        return self.parent
+
+    def update_total(self, n):
+        self.total_score += n
 
     def get_visits(self):
         """Returns the number of times the node has been visited (I.E. how many
@@ -193,14 +210,22 @@ class Node:
         """Increments the total number of times the node has been visited."""
         self.visits += 1
 
+    def set_parent(self, parent):
+        self.parent = parent
+
     def add_node(self, node):
         """Adds another node to the current one."""
-        self.moves.append(node)
+        self.children.append(node)
+
+    def remove_node(self, uci):
+        if self.contains(uci):
+            node = self.select(uci)
+            del node
 
     def select(self, uci):
         """Returns a node from the node's children based on name, or None if
         no such UCI exists."""
-        for node in self.moves:
+        for node in self.children:
             if node.get_name() == uci:
                 return node
         return None
@@ -208,7 +233,7 @@ class Node:
     def contains(self, uci):
         """Checks whether or not a given UCI string exists as a name of one
         of the node's children."""
-        for node in self.moves:
+        for node in self.children:
             if node.get_name() == uci:
                 return True
         return False
@@ -275,119 +300,106 @@ class Agent:
     def __init__(self):
         self.nn = None
         self.evaluations = 0
+        self.tree = Node("root")
 
     def eval(self, tensor):
         """Returns a 'rating' of the given position, with 1 indicating a white
         win and -1 indicating a black win, with 0 as draw or stalemate."""
         return self.nn.predict(np.array([tensor]))[0][0]
 
-    """
-    def search(self, state, d=3):
+    def search(self, iterations=10000):
 
-        # We monitor how long it actually takes for the agent to select an optimal move.
-        start = time.time()
+        current = self.tree
 
-        # The following is a fairly standard implementation of minimizer-maximizer agents.
-        # This is the "maximizer" function.
-        def max_value(board, alpha, beta, depth):
+        for i in range(iterations):
 
-            board_tensor = tr.board_tensor(board)
+            # Selection:
+            # We pick nodes with the maximum UCB1 value.
+            children = current.get_children()
+            if len(current.get_children()) > 0:
 
-            if depth > d or board.is_checkmate():
-                self.evaluations += 1
-                return self.eval(board_tensor)
+                best_score = -10000
+                best_node = None
 
-            # Because this is the maximizer (I.E., the value of an action can only go
-            # up), we set the value to the lowest possible score, which in tanh is -1.
-            value = -1
-            possible_moves = get_legal_moves(board)
+                for node in children:
+                    if node.get_visits() > 0:
+                        average_score = node.get_total() / node.get_visits()
+                        total_simulations = i
+                        visits = node.get_visits()
 
-            while not possible_moves.empty():
-                a, s = possible_moves.get()[2]
+                        # The 2 here is the exploration factor.
+                        ucb1 = average_score + 2 * np.sqrt(np.log(total_simulations)/visits)
 
-                ##################################
-                # NEW ADDITION
-                zobrist = tr.get_board_zobrist(s)
-                if ZOBRIST_TABLE[zobrist] == -10:
-                    value = max(value, min_value(s, alpha, beta, depth + 1))
-                    ZOBRIST_TABLE[zobrist] = value
+                        if ucb1 > best_score:
+                            best_score = ucb1
+                            best_node = node
+                    else:
+                        best_score = 10
+                        best_node = node
 
-                else:
-                    value = ZOBRIST_TABLE[zobrist]
+                current = best_node
 
-                # value = max(value, min_value(s, alpha, beta, depth + 1))
+            else:
+                # Expansion
+                # If the node is a leaf node, add a bunch of children to it:
+                legal_moves = get_legal_moves(current.get_state())
+                move_list = []
 
-                # CUTOFF
-                if value >= beta:
-                    return value
+                while not legal_moves.empty():
+                    move, result = legal_moves.get()[2]
 
-                alpha = max(alpha, value)
+                    new_node = Node(move.uci())
+                    new_node.set_parent(current)
+                    new_node.set_state(result)
 
-            return value
+                    current.add_node(new_node)
+                    move_list.append(new_node)
 
-        # And this is the minimizer function.
-        def min_value(board, alpha, beta, depth):
+                # Select random move from current
+                current = move_list[np.random.randint(low=0, high=len(move_list))]
 
-            board_tensor = tr.board_tensor(board)
+                # Simulation/rollout
+                current_depth = 0
 
-            # TODO: implement instant return on checkmate
-            if depth > d or board.is_checkmate():
-                self.evaluations += 1
-                return self.eval(board_tensor)
+                while not current.get_state().is_game_over(claim_draw=True) and current_depth < 8:
+                    legal_moves = get_legal_moves(current.get_state())
 
-            value = 1
-            possible_moves = get_legal_moves(board)
+                    random_moves = []
 
-            while not possible_moves.empty():
-                action, state = possible_moves.get()[2]
+                    while not legal_moves.empty():
+                        move, result = legal_moves.get()[2]
+                        new_node = Node(move.uci())
+                        new_node.set_parent(current)
+                        new_node.set_state(result)
+                        random_moves.append(new_node)
 
-                ##################################
-                # NEW ADDITION
-                zobrist = tr.get_board_zobrist(state)
-                if ZOBRIST_TABLE[zobrist] == -10:
-                    value = min(value, max_value(state, alpha, beta, depth + 1))
-                    ZOBRIST_TABLE[zobrist] = value
-                else:
-                    value = ZOBRIST_TABLE[zobrist]
+                    current_depth += 1
 
-                # value = min(value, max_value(state, alpha, beta, depth + 1))
+                    # pick random move
+                    current = random_moves[np.random.randint(low=0, high=len(random_moves))]
 
-                # CUTOFF
-                if value <= alpha:
-                    return value
+                # Backprop
+                score = self.eval(tr.board_tensor(current.get_state()))
+                if current.get_state().is_game_over(claim_draw=True):
+                    score = RESULT_DICT[current.get_state().result(claim_draw=True)]
 
-                beta = min(beta, value)
+                while current.parent is not None:
+                    current.update_total(score)
+                    current.update_visits()
+                    current = current.parent
 
-            return value
+        children = self.tree.get_children()
+        best_node = children[0]
+        best_score = -10000
 
-        # Body of alphabeta_search starts here:
-        # The default test cuts off at depth d or at a terminal state
+        for node in children:
+            print(node.get_name() + ": value: " + str(node.get_total()/node.get_visits()))
+            value = node.get_total() / node.get_visits()
 
-        # We now have a list of tuple pairs of actions and their resulting board
-        # configurations.
-        children = get_legal_moves(state)
-        best_pair = children.get()[2]
+            if value > best_score:
+                best_node = node
 
-        # We search the first branch available, since no other information is given.
-        best_score = min_value(best_pair[1], -1, 1, 0)
-
-        # We now iterate through all legal moves and get their scores:
-        while not children.empty():
-            x = children.get()
-            x_score = min_value(x[2][1], -1, 1, 0)
-
-            print("Evaluating " + x[2][0].uci() + "; value: " + str(x_score))
-
-            if x_score > best_score:
-                print("Found a better move than " + best_pair[0].uci() + ": " + x[2][0].uci())
-                best_pair, best_score = x[2], x_score
-
-        end = time.time()
-        elapsed = end - start
-        print("Evaluated " + str(self.evaluations) + " positions in " + str(round(elapsed, 3)) + " seconds")
-
-        return best_pair[0]
-    """
+        return chess.Move.from_uci(best_node.get_name())
 
     def build_nn(self):
         main_input = Input(shape=(8, 8, 12), name="main_input")
@@ -405,8 +417,8 @@ class Agent:
     def get_nn(self):
         return self.nn
 
-    #def play_move(self, state):
-    #    return self.search(state)
+    def play_move(self):
+        return self.search()
 
     def load_nn(self, path):
         self.nn = load_model(path)

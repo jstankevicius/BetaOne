@@ -21,6 +21,7 @@ START = 17600000
 
 base_board = Board()
 base_tensor = tr.board_tensor(base_board)
+processed_games = 0
 
 agent = Agent()
 agent.build_nn()
@@ -32,8 +33,9 @@ for batch in range(BATCHES):
     index_in_batch = 0
 
     for game_number in range(GAMES):
+        processed_games += 1
         try:
-            pgn = open("D://data//qchess//games//" + str(START + game_number) + ".pgn")
+            pgn = open("D://data//qchess//games//" + str(START + processed_games) + ".pgn")
             game = chess.pgn.read_game(pgn)
             board = game.board()
 
@@ -65,4 +67,4 @@ for batch in range(BATCHES):
     if (batch + 1) % 625 == 0:
         # perform base evaluation:
         base_eval = agent.eval(base_tensor).astype(np.str_)
-        agent.get_nn().save("models//model" + str(batch) + "_BE_" + base_eval + ".h5")
+        agent.get_nn().save("model//model" + str(batch) + "_BE_" + base_eval + ".h5")

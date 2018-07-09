@@ -5,10 +5,10 @@
 
 import chess
 import chess.pgn
-import time
 from chess import Board
 from queue import PriorityQueue
 import numpy as np
+import random
 import translator as tr
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
@@ -16,7 +16,7 @@ from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Leak
 # Settings:
 CONV_BLOCKS = 15
 
-#ZOBRIST_TABLE = np.full((2**32), -10, dtype=np.float16)
+# ZOBRIST_TABLE = np.full((2**32), -10, dtype=np.float16)
 COMPUTED_HASHES = []
 
 RESULT_DICT = {
@@ -77,7 +77,24 @@ def create_value_head(x):
     return x
 
 
-def get_legal_moves(board):
+def get_unordered_legal_moves(board):
+    """Simple variant of getting move/result pairs from a board. Does not order by capture
+    or any other heuristics."""
+    moves = []
+
+    for move in board.legal_moves:
+        result = board.copy()
+        result.push(move)
+
+        if result.is_checkmate():
+            return [(move, result)]
+
+        moves.append((move, result))
+
+    return moves
+
+
+def get_ordered_legal_moves(board):
     """Returns all possible legal moves from board_state and the resulting
     board configurations. Pairs are ranked in the following order:
     1. Does the move result in checkmate? If yes, we delete all other moves
@@ -101,10 +118,10 @@ def get_legal_moves(board):
     move_number = 0
 
     for move in board.legal_moves:
-        copy = board.copy()
+        result = board.copy()
 
         # copy contains the resulting board configuration after the move is played.
-        copy.push(move)
+        result.push(move)
 
         # We set the default move value to something very high; this is because items
         # in a PriorityQueue get ranked by the "lowest" priority first. Thus, moves with
@@ -112,7 +129,7 @@ def get_legal_moves(board):
         move_value = 10000
 
         # Check for checkmate:
-        if copy.is_checkmate():
+        if result.is_checkmate():
 
             # If the resulting action is a checkmate, we need only return one
             # element, as all others are pointless to evaluate. Checkmate is
@@ -120,7 +137,7 @@ def get_legal_moves(board):
             # should later check if the initial size of the PriorityQueue
             # returned is 1, as this will indicate a checkmating move.
             legal_moves = PriorityQueue()
-            legal_moves.put((move_value, move_number, (move, copy)))
+            legal_moves.put((move_value, move_number, (move, result)))
             return legal_moves
 
         # Check for capture:
@@ -159,7 +176,7 @@ def get_legal_moves(board):
             # TODO: the endgame? This is the most likely solution.
             move_value = capturing_piece_value - captured_piece_value
 
-        legal_moves.put((move_value, move_number, (move, copy)))
+        legal_moves.put((move_value, move_number, (move, result)))
         move_number += 1
 
     return legal_moves
@@ -184,6 +201,13 @@ class Node:
     def get_children(self):
         """Returns the child nodes of the current node."""
         return self.children
+
+    def expand(self, legal_moves):
+        for move, result in legal_moves:
+            child_node = Node(move.uci())
+            child_node.set_state(result)
+            child_node.set_parent(self)
+            self.add_node(child_node)
 
     def get_state(self):
         return self.state
@@ -239,7 +263,7 @@ class Node:
         return False
 
 
-def create_opening_tree(games=20000, d=8):
+def create_opening_tree(games=10000, d=8):
     """Creates a tree of nodes of a given depth out of a given number of games."""
 
     # TODO: implement pruning_threshold parameter that determines whether or not we
@@ -293,8 +317,6 @@ def create_opening_tree(games=20000, d=8):
     return base_node
 
 
-# The agent is essentially an instantiable AI instance. Given a board, it can play a move
-# after performing going through search and evaluation steps.
 class Agent:
 
     def __init__(self):
@@ -307,8 +329,8 @@ class Agent:
         win and -1 indicating a black win, with 0 as draw or stalemate."""
         return self.nn.predict(np.array([tensor]))[0][0]
 
-    def search(self, iterations=10000):
-
+    def search(self, iterations=2000):
+        """MCTS search from the root node (self.tree) until a given depth."""
         current = self.tree
 
         for i in range(iterations):
@@ -316,6 +338,7 @@ class Agent:
             # Selection:
             # We pick nodes with the maximum UCB1 value.
             children = current.get_children()
+
             if len(current.get_children()) > 0:
 
                 best_score = -10000
@@ -342,41 +365,22 @@ class Agent:
             else:
                 # Expansion
                 # If the node is a leaf node, add a bunch of children to it:
-                legal_moves = get_legal_moves(current.get_state())
-                move_list = []
+                legal_moves = get_unordered_legal_moves(current.get_state())
+                current.expand(legal_moves)
 
-                while not legal_moves.empty():
-                    move, result = legal_moves.get()[2]
-
-                    new_node = Node(move.uci())
-                    new_node.set_parent(current)
-                    new_node.set_state(result)
-
-                    current.add_node(new_node)
-                    move_list.append(new_node)
-
-                # Select random move from current
-                current = move_list[np.random.randint(low=0, high=len(move_list))]
-
-                # Simulation/rollout
+                # Simulation
                 current_depth = 0
 
                 while not current.get_state().is_game_over(claim_draw=True) and current_depth < 8:
-                    legal_moves = get_legal_moves(current.get_state())
+                    action, result = random.choice(legal_moves)
 
-                    random_moves = []
+                    child_node = Node(action.uci())
+                    child_node.set_state(result)
+                    child_node.set_parent(current)
+                    current = child_node
 
-                    while not legal_moves.empty():
-                        move, result = legal_moves.get()[2]
-                        new_node = Node(move.uci())
-                        new_node.set_parent(current)
-                        new_node.set_state(result)
-                        random_moves.append(new_node)
-
+                    legal_moves = get_unordered_legal_moves(current.get_state())
                     current_depth += 1
-
-                    # pick random move
-                    current = random_moves[np.random.randint(low=0, high=len(random_moves))]
 
                 # Backprop
                 score = self.eval(tr.board_tensor(current.get_state()))
@@ -390,13 +394,14 @@ class Agent:
 
         children = self.tree.get_children()
         best_node = children[0]
-        best_score = -10000
+        best_score = best_node.get_total() / best_node.get_visits()
 
         for node in children:
-            print(node.get_name() + ": value: " + str(node.get_total()/node.get_visits()))
             value = node.get_total() / node.get_visits()
+            print(node.get_name() + ": value: " + str(value))
 
             if value > best_score:
+                best_score = value
                 best_node = node
 
         return chess.Move.from_uci(best_node.get_name())

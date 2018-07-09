@@ -34,6 +34,7 @@ for batch in range(BATCHES):
 
     for game_number in range(GAMES):
         processed_games += 1
+
         try:
             pgn = open("D://data//qchess//games//" + str(START + processed_games) + ".pgn")
             game = chess.pgn.read_game(pgn)
@@ -41,9 +42,16 @@ for batch in range(BATCHES):
 
             positions = []
 
+            ply = 0
             for move in game.main_line():
-                positions.append(tr.board_tensor(board))
                 board.push(move)
+                board_tensor = tr.board_tensor(board)
+
+                if ply % 2 != 0:
+                    board_tensor = tr.mirror_tensor(board_tensor)
+
+                positions.append(board_tensor)
+                ply += 1
 
             sampled_indices = np.random.randint(low=0, high=len(positions), size=MOVE_SAMPLES, dtype=np.uint32)
 

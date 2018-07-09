@@ -18,12 +18,12 @@ PIECE_ENCODINGS = {
     "Q": np.array([0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]),
     "K": np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]),
     "P": np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]),
-    "r": np.array([0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
-    "n": np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
-    "b": np.array([0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]),
-    "q": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),
-    "k": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]),
-    "p": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
+    "p": np.array([0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
+    "k": np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
+    "q": np.array([0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]),
+    "b": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0]),
+    "n": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]),
+    "r": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
 }
 
 
@@ -89,6 +89,6 @@ def mirror_tensor(tensor):
     """Mirrors a board tensor vertically and horizontally and flips the color of each piece."""
     mirrored_tensor = np.flip(np.copy(tensor), 0)
     mirrored_tensor = np.flip(mirrored_tensor, 1)
-    # mirrored_tensor *= -1
+    mirrored_tensor = np.flip(mirrored_tensor, 2)
 
     return mirrored_tensor

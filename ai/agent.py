@@ -3,10 +3,8 @@
 # head. The agent architecture is based on one of the architectures discussed in DeepMind's
 # paper on AlphaGo Zero, namely the "dual-conv" variation, with some adjustments.
 
-import chess
 import position as pos
 import numpy as np
-import random
 from node import Node
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
@@ -75,9 +73,13 @@ class Agent:
         self.tree.expand()
 
     def eval(self, state):
-        """Returns a 'rating' of the given position, with 1 indicating a white
-        win and -1 indicating a black win, with 0 as draw or stalemate."""
+        """Returns a 'rating' of the given position as evaluated from the perspective
+        of the current player (assumed the be white), with 1 as a win, 0 as draw, and
+        -1 as a loss."""
 
+        # Check if we are evaluating a state where it is our opponent's turn to move. In
+        # that case, we'd want to return high values for moves that are good for THE OPPONENT,
+        # not for us.
         eval_opponent = state.turn != self.color
 
         tensor = pos.board_tensor(state)
@@ -124,13 +126,16 @@ class Agent:
                     current = node
 
         # Expansion:
-        # If the node is a leaf node, add a bunch of children to it:
+        # If the node is a leaf node, add a bunch of children to it.
 
         # NOTE: if we are using an opening tree, the initial tree might not contain
         # ALL legal moves for a particular board state, simply because they've never
         # been played. This is probably okay for us (because we trust that LCZ selects
         # good moves) but might have some consequences that I'm not seeing yet.
         current.expand()
+
+        # TODO: maybe evaluate all the children and then backprop? I could multithread this
+        # TODO: by assigning a different set of children to different threads.
 
         # Evaluation:
         score = self.eval(current.get_state())
@@ -167,9 +172,3 @@ class Agent:
     def train(self, inputs, outputs):
         loss = self.nn.train_on_batch(inputs, outputs)
         return loss
-
-
-a = Agent()
-a.build_nn()
-for i in range(1600):
-    a.playout()

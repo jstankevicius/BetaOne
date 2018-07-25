@@ -3,10 +3,10 @@ from chess import Board
 import chess.pgn
 import position as pos
 import numpy as np
+import random
 
-GAMES = 4000000
-BATCH_SIZE = 256
-BATCHES = int(GAMES/BATCH_SIZE)
+GAMES = 500000
+BATCHES = 30000
 
 RESULT_DICT = {
     "1-0": 1,
@@ -19,60 +19,83 @@ RESULT_DICT = {
 START = 17600000
 
 base_board = Board()
-base_tensor = pos.board_tensor(base_board)
 processed_games = 0
 
 agent = Agent()
 agent.build_nn()
 
 
-for batch in range(BATCHES):
+# While loop seems iffy.
+def get_batch(batch_size=256):
+    successful = 0
 
-    inputs = np.zeros(shape=(BATCH_SIZE, 8, 8, 12))
-    outputs = np.zeros(shape=(BATCH_SIZE, 1))
-    index_in_batch = 0
+    inputs = np.zeros(shape=(batch_size, 8, 8, 12))
+    outputs = np.zeros(shape=(batch_size, 1))
 
-    for game_number in range(GAMES):
-        try:
-            pgn = open("D://data//qchess//games//" + str(START + processed_games) + ".pgn")
-            game = chess.pgn.read_game(pgn)
-            board = game.board()
+    # We repeat random sampling of moves until we completely fill the inputs and outputs.
+    while successful < batch_size:
+        file_number = np.random.randint(low=START, high=START + GAMES)
 
-            positions = []
+        with open("D://data//qchess//games//" + str(file_number) + ".pgn") as pgn:
 
-            ply = 0
-            for move in game.main_line():
-                board.push(move)
-                board_tensor = tr.board_tensor(board)
+            try:
+                game = chess.pgn.read_game(pgn)
+                board = game.board()
+                positions = []
 
-                if ply % 2 != 0:
-                    board_tensor = tr.mirror_tensor(board_tensor)
+                ply = 0
 
-                positions.append(board_tensor)
-                ply += 1
+                # All positions must be from the perspective of white, with black to play next.
+                for move in game.main_line():
+                    board.push(move)
+                    board_tensor = pos.board_tensor(board)
 
-            sampled_indices = np.random.randint(low=0, high=len(positions), size=MOVE_SAMPLES, dtype=np.uint32)
+                    # If the ply is odd (meaning it is black's turn to play), we flip the tensor.
+                    if ply % 2 != 0:
+                        board_tensor = pos.mirror_tensor(board_tensor)
 
-            for i in range(MOVE_SAMPLES):
-                sample_index = sampled_indices[i]
+                    positions.append(board_tensor)
+                    ply += 1
 
-                inputs[index_in_batch] = positions[sample_index]
-                outputs[index_in_batch] = RESULT_DICT[board.result(claim_draw=True)]
+                # Assuming we have iterated through the entire game, we check for the result.
+                result = RESULT_DICT[board.result(claim_draw=True)]
+                move_index = np.random.randint(low=0, high=len(positions))
 
-                index_in_batch += 1
+                if np.mod(move_index, 2) != 0:
+                    # If black is to play from this move, we negate the result, as the neural network
+                    # always evaluates from the perspective of white.
+                    result *= -1
 
-        except AttributeError:
-            print("AttributeError at " + str(START + processed_games) + ".pgn: cannot read data from board")
+                inputs[successful] = positions[move_index]
+                outputs[successful] = result
 
-        except UnicodeDecodeError:
-            print("UnicodeDecodeError at " + str(START + processed_games) + ".pgn: symbol does not match any recognized")
+                successful += 1
+                pgn.close()
 
-        processed_games += 1
+            except AttributeError:
+                print("AttributeError at " + str(file_number) + ".pgn: cannot read data from board")
+                pgn.close()
 
-    loss = agent.train(inputs, outputs)
-    print(str(batch) + ".\tloss: " + str(loss))
+            except UnicodeDecodeError:
+                print("UnicodeDecodeError at " + str(file_number) + ".pgn: symbol does not match any recognized")
+                pgn.close()
 
-    if (batch + 1) % 625 == 0:
-        # perform base evaluation:
-        base_eval = agent.eval(base_tensor).astype(np.str_)
-        agent.get_nn().save("model//model" + str(batch) + "_BE_" + base_eval + ".h5")
+    return inputs, outputs
+
+
+def main():
+    for batch in range(BATCHES):
+
+        inputs, outputs = get_batch()
+
+        loss = agent.train(inputs, outputs)
+        print(str(batch) + ".\tloss: " + str(loss))
+
+        if (batch + 1) % 300 == 0:
+            # perform base evaluation:
+            base_eval = agent.eval(base_board).astype(np.str_)
+            print("BASE EVAL: " + base_eval)
+            agent.get_nn().save("model//model" + str(batch + 1) + ".h5")
+
+
+main()

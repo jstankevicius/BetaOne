@@ -9,7 +9,6 @@ import chess
 # populates each list.
 PIECES = ("R", "N", "B", "Q", "K", "P", "r", "n", "b", "q", "k", "p")
 
-ZOBRIST_TABLE = np.empty(shape=(64, 12), dtype=np.uint32)
 
 PIECE_ENCODINGS = {
     "R": np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
@@ -27,25 +26,21 @@ PIECE_ENCODINGS = {
 }
 
 
-def get_board_zobrist(board):
-    """Returns a Zobrist hash of the board."""
-    h = np.uint32(0)
+def get_unordered_legal_moves(board):
+    """Simple variant of getting move/result pairs from a board. Does not order by capture
+    or any other heuristics."""
+    moves = []
 
-    for i in range(64):
-        square = chess.SQUARES[i]
+    for move in board.legal_moves:
+        result = board.copy()
+        result.push(move)
 
-        # Once again, we check if there is a piece on the square by looking
-        # for an AttributeError.
-        try:
-            piece = board.piece_at(square).symbol()
-            piece_index = PIECES.index(piece)
-            h = np.bitwise_xor(h, ZOBRIST_TABLE[i, piece_index])
+        if result.is_checkmate():
+            return [(move, result)]
 
-        # Ugly, but there are no alternatives that are written prettier.
-        except AttributeError:
-            pass
+        moves.append((move, result))
 
-    return h
+    return moves
 
 
 def board_tensor(board):

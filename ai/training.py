@@ -1,13 +1,12 @@
 from agent import Agent
 from chess import Board
 import chess.pgn
-import translator as tr
+import position as pos
 import numpy as np
 
-BATCHES = 15625                     # how many batches are fed into the neural network
-GAMES = 16                          # how many games we sample per batch
-MOVE_SAMPLES = 2                    # how many board positions are sampled per game
-BATCH_SIZE = GAMES * MOVE_SAMPLES   # total number of samples fed into the batch
+GAMES = 4000000
+BATCH_SIZE = 256
+BATCHES = int(GAMES/BATCH_SIZE)
 
 RESULT_DICT = {
     "1-0": 1,
@@ -20,11 +19,12 @@ RESULT_DICT = {
 START = 17600000
 
 base_board = Board()
-base_tensor = tr.board_tensor(base_board)
+base_tensor = pos.board_tensor(base_board)
 processed_games = 0
 
 agent = Agent()
 agent.build_nn()
+
 
 for batch in range(BATCHES):
 
@@ -33,8 +33,6 @@ for batch in range(BATCHES):
     index_in_batch = 0
 
     for game_number in range(GAMES):
-        processed_games += 1
-
         try:
             pgn = open("D://data//qchess//games//" + str(START + processed_games) + ".pgn")
             game = chess.pgn.read_game(pgn)
@@ -64,10 +62,12 @@ for batch in range(BATCHES):
                 index_in_batch += 1
 
         except AttributeError:
-            print("AttributeError at " + str(START + game_number) + ".pgn: cannot read data from board")
+            print("AttributeError at " + str(START + processed_games) + ".pgn: cannot read data from board")
 
         except UnicodeDecodeError:
-            print("UnicodeDecodeError at " + str(START + game_number) + ".pgn: symbol does not match any recognized")
+            print("UnicodeDecodeError at " + str(START + processed_games) + ".pgn: symbol does not match any recognized")
+
+        processed_games += 1
 
     loss = agent.train(inputs, outputs)
     print(str(batch) + ".\tloss: " + str(loss))

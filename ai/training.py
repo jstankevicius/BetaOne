@@ -3,10 +3,11 @@ from chess import Board
 import chess.pgn
 import position as pos
 import numpy as np
+import traceback
 import random
 
 GAMES = 500000
-BATCHES = 30000
+BATCHES = 1
 
 RESULT_DICT = {
     "1-0": 1,
@@ -17,10 +18,7 @@ RESULT_DICT = {
 
 # The number of the first game
 START = 17600000
-
 base_board = Board()
-processed_games = 0
-
 agent = Agent()
 agent.build_nn()
 
@@ -69,15 +67,23 @@ def get_batch(batch_size=256):
                 inputs[successful] = positions[move_index]
                 outputs[successful] = result
 
+                # Some diagnostics
+                # pos.tensor_to_board(inputs[successful])
+                # print("Winner from player's perspective:" + str(outputs[successful]))
+                # print("Absolute winner: " + board.result(claim_draw=True))
+                # print("Agent evaluation: " + str(agent.get_nn().predict(np.array([inputs[successful]]))[0][0]))
+                # print()
                 successful += 1
                 pgn.close()
 
             except AttributeError:
                 print("AttributeError at " + str(file_number) + ".pgn: cannot read data from board")
+                print(str(traceback.format_exc()))
                 pgn.close()
 
             except UnicodeDecodeError:
                 print("UnicodeDecodeError at " + str(file_number) + ".pgn: symbol does not match any recognized")
+                print(str(traceback.format_exc()))
                 pgn.close()
 
     return inputs, outputs
@@ -86,10 +92,11 @@ def get_batch(batch_size=256):
 def main():
     for batch in range(BATCHES):
 
-        inputs, outputs = get_batch()
+        inputs, outputs = get_batch(batch_size=10)
 
-        loss = agent.train(inputs, outputs)
-        print(str(batch) + ".\tloss: " + str(loss))
+
+        #loss = agent.train(inputs, outputs)
+        #print(str(batch) + ".\tloss: " + str(loss))
 
         if (batch + 1) % 300 == 0:
             # perform base evaluation:

@@ -5,6 +5,7 @@
 
 import position as pos
 import numpy as np
+import chess
 from node import Node
 from keras.models import Model, load_model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
@@ -103,11 +104,13 @@ class Agent:
         # Selection:
         # We traverse the tree to some leaf node L by selecting nodes that maximize the
         # UCB1 value.
+        depth = 0
         while len(current.get_children()) > 0:
 
             children = current.get_children()
 
             best_score = -10000
+            best_node = None
 
             for node in children:
                 total_simulations = root.get_visits()
@@ -119,11 +122,17 @@ class Agent:
                     ucb1 = average_score + 2 * np.sqrt(np.log(total_simulations) / visits)
 
                     if ucb1 > best_score:
+                        #print("Better node: " + node.get_name() + "with score of " + str(ucb1))
                         best_score = ucb1
-                        current = node
+                        best_node = node
                 else:
                     best_score = 10
-                    current = node
+                    best_node = node
+
+            depth += 1
+            current = best_node
+            print(current.get_name())
+            print(depth)
 
         # Expansion:
         # If the node is a leaf node, add a bunch of children to it.
@@ -142,10 +151,15 @@ class Agent:
 
         # Backprop:
         # Iterate backwards to root node and update stats as we go along.
-        while current.parent is not None:
+        at_root = False
+        while not at_root:
             current.update_total(score)
             current.update_visits()
-            current = current.parent
+
+            if current.get_parent() is None:
+                at_root = True
+            else:
+                current = current.parent
 
     def build_nn(self):
         main_input = Input(shape=(8, 8, 12), name="main_input")
@@ -156,9 +170,24 @@ class Agent:
 
         value_head = create_value_head(x)
         model = Model(inputs=[main_input], outputs=[value_head])
-        model.compile(loss="mse", optimizer="rmsprop")
+        model.compile(loss="mse", optimizer="adadelta")
 
         self.nn = model
+
+    def play_move(self):
+        for i in range(800):
+            self.playout()
+
+        best_move = ""
+        most_visits = 0
+
+        for node in self.tree.get_children():
+            if node.get_visits() > most_visits:
+                best_move = node.get_name()
+                most_visits = node.get_visits()
+
+        print(len(self.tree.select(best_move).get_children()))
+        return chess.Move.from_uci(best_move)
 
     def get_tree(self):
         return self.tree

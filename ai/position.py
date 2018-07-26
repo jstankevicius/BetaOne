@@ -7,7 +7,7 @@ import chess
 # Global variables are denoted with capital letters for readability. These are constant (after
 # being created, of course) and are not modified by any function other than the function that
 # populates each list.
-PIECES = ("R", "N", "B", "Q", "K", "P", "r", "n", "b", "q", "k", "p")
+PIECES = ("R", "N", "B", "Q", "K", "P", "p", "k", "q", "b", "n", "r")
 
 
 PIECE_ENCODINGS = {
@@ -24,6 +24,17 @@ PIECE_ENCODINGS = {
     "n": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]),
     "r": np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]),
 }
+
+
+def tensor_to_board(tensor):
+    for i in range(8):
+        row = ""
+        for j in range(8):
+            if np.sum(tensor[i, j]) != 0:
+                row += PIECES[int(np.argmax(tensor[i, j]))] + " "
+            else:
+                row += ". "
+        print(row)
 
 
 def get_unordered_legal_moves(board):

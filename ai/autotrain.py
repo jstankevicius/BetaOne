@@ -36,8 +36,6 @@ GAMES = 500000
 TRAINING = False
 
 
-
-
 # While loop seems iffy.
 def get_batch(batch_size=256):
     successful = 0

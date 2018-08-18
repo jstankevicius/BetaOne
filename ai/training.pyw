@@ -38,7 +38,7 @@ def get_batch(batch_size=256):
     inputs = np.zeros(shape=(batch_size, 8, 8, 30))
     outputs = np.zeros(shape=(batch_size, 1))
     successful = 0
-
+    i = 0
     pgn.seek(0, 2)
     size = pgn.tell()
     random_set = sorted(random.sample(range(size), batch_size))
@@ -63,9 +63,11 @@ def get_batch(batch_size=256):
             inputs[successful] = tensor
             outputs[successful] = result
             successful += 1
+            i += 1
 
         except ValueError:
-            pass
+            i += 1
+            
 
     return inputs, outputs
 

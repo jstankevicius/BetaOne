@@ -8,10 +8,10 @@ import numpy as np
 import chess
 from node import Node
 from keras.models import Model, load_model
-from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU
+from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU, add
 
 # Settings:
-CONV_BLOCKS = 15
+RES_BLOCKS = 19
 
 RESULT_DICT = {
     "1-0": 1,
@@ -25,7 +25,7 @@ RESULT_DICT = {
 # input is processed using a series of convolutional blocks before being passed to the
 # value and policy heads. Activation functions and auxillary layers follow those described
 # in the paper.
-def create_conv_block(x):
+def conv_block(x):
     """Adds a convolution block to an existing tower x."""
     x = Conv2D(filters=64,
                kernel_size=3,
@@ -36,13 +36,45 @@ def create_conv_block(x):
                # Should I be doing this as channels_first? Is there a difference?
                data_format="channels_last")(x)
 
-    x = BatchNormalization(axis=1)(x)
+    x = BatchNormalization(axis=3)(x)
     x = LeakyReLU()(x)
 
     return x
 
 
-def create_value_head(x):
+def res_layer(x):
+
+    input_layer = x
+
+    x = Conv2D(filters=64,
+               kernel_size=3,
+               strides=1,
+               padding="same",
+               activation="relu",
+
+               # Should I be doing this as channels_first? Is there a difference?
+               data_format="channels_last")(input_layer)
+
+    x = BatchNormalization(axis=3)(x)
+    x = LeakyReLU()(x)
+
+    x = Conv2D(filters=64,
+               kernel_size=3,
+               strides=1,
+               padding="same",
+               activation="relu",
+
+               # Should I be doing this as channels_first? Is there a difference?
+               data_format="channels_last")(x)
+
+    x = BatchNormalization(axis=3)(x)
+    x = add([input_layer, x])
+    x = LeakyReLU()(x)
+
+    return x
+
+
+def val_head(x):
     """Adds a value head to an existing tower x. Outputs are activated via tanh, meaning
     they are between -1 and 1."""
     x = Conv2D(filters=1,
@@ -52,7 +84,7 @@ def create_value_head(x):
                padding="same",
                activation="linear")(x)
 
-    x = BatchNormalization(axis=1)(x)
+    x = BatchNormalization(axis=3)(x)
     x = LeakyReLU()(x)
     x = Flatten()(x)
     x = Dense(20, activation="linear")(x)
@@ -162,13 +194,15 @@ class Agent:
                 current = current.parent
 
     def build_nn(self):
-        main_input = Input(shape=(8, 8, 12), name="main_input")
-        x = create_conv_block(main_input)
 
-        for i in range(CONV_BLOCKS):
-            x = create_conv_block(x)
+        # TODO: fix input shape
+        main_input = Input(shape=(8, 8, 30), name="main_input")
+        x = conv_block(main_input)
 
-        value_head = create_value_head(x)
+        for i in range(RES_BLOCKS):
+            x = res_layer(x)
+
+        value_head = val_head(x)
         model = Model(inputs=[main_input], outputs=[value_head])
         model.compile(loss="mse", optimizer="adadelta")
 

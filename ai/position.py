@@ -55,38 +55,78 @@ def get_unordered_legal_moves(board):
 
 
 def board_tensor(board):
-    """Returns a board state represented as a tensor of shape (8, 8, 6)."""
+    tensor = np.zeros(shape=(8, 8, 12))
+    attackers = np.zeros(shape=(8, 8, 12))
 
-    # The first two dimensions of the tensor represent the rank and file location
-    # of a square. The third dimension is a one-hot encoding of the piece occupying the
-    # square (all elements set to 0 for an empty square), with 6 for each piece type for
-    # white, and 6 for black.
-    tensor = np.zeros((8, 8, 12))
+    pieces = board.piece_map()
 
-    # The way chess denotes board locations is weird for most programming languages. We
-    # have to start at A8 first, since that is the top left item, and thus the first element
-    # in a 2D array. However, the "first" square in chess is A1, at the bottom left. Thus,
-    # we start at the "last" row and move down, and start at the "first" column and move right.
-    for row in range(8):
-        for col in range(8):
+    # Add pieces:
+    for square in pieces.keys():
+        file = chess.square_file(square)
+        rank = chess.square_rank(square)
 
-            # This is a simple conversion from computer-readable "rows" and "columns" to ones
-            # that can be understood with python-chess. During the very first iteration,
-            # chess_row should denote the top row of the board, and chess_col the leftmost column.
-            file_index = col
-            rank_index = 7 - row
+        piece = pieces[square].symbol()
 
-            try:
-                # We now allocate one-hot encodings based on those defined in ENCODINGS, corresponding
-                # to their respective pieces.
-                symbol = board.piece_at(chess.square(file_index, rank_index)).symbol()
-                tensor[row, col] = PIECE_ENCODINGS[symbol]
+        row = 7 - rank
+        col = file
 
-            # python-chess throws an AttributeError if we call piece_at on an empty square.
-            # However, if it IS an empty square, we can simply set the corresponding
-            # one-hot encoding as well.
-            except AttributeError:
-                tensor[row, col] = np.zeros(12)
+        tensor[row, col] = PIECE_ENCODINGS[piece]
+
+        attacked_squares = board.attacks(square)
+
+        for attacked_square in attacked_squares:
+
+            attacked_file = chess.square_file(attacked_square)
+            attacked_rank = chess.square_rank(attacked_square)
+
+            attacked_row = 7 - attacked_rank
+            attacked_col = attacked_file
+
+            attackers[attacked_row, attacked_col, np.argmax(PIECE_ENCODINGS[piece])] += 1
+
+    if not board.turn:
+        tensor = mirror_tensor(tensor)
+        attackers = mirror_tensor(attackers)
+
+    tensor = np.concatenate((tensor, attackers), 2)
+
+    # The feature vector is a concatenation of board tensors from
+    # the previous 8 states. We have several constant features that represent
+    # data in this particular position:
+    # 1. Current player's kingside castling rights
+    # 2. Current player's queenside castling rights
+    # 3. Opponent's kingside castling rights
+    # 3. Opponent's queenside castling rights
+    # 4. No-progress count
+    # 5. Number of repeated board state pairs (6 plies repeated is instant draw)
+    # 6. Total number of moves
+
+    # We initialize the feature vector as a list of counters.
+    # "player" is simply the current side's color.
+
+    player = board.turn
+
+    player_has_kingside_castling_rights = float(board.has_kingside_castling_rights(player))
+    player_has_queenside_castling_rights = float(board.has_queenside_castling_rights(player))
+
+    # "not player" is my favorite piece of python I've ever written
+    opponent_has_kingside_castling_rights = float(board.has_kingside_castling_rights(not player))
+    opponent_has_queenside_castling_rights = float(board.has_queenside_castling_rights(not player))
+    no_progress_count = board.halfmove_clock
+    total_moves = board.fullmove_number
+
+    counter_layers = (
+        player_has_kingside_castling_rights,
+        player_has_queenside_castling_rights,
+        opponent_has_kingside_castling_rights,
+        opponent_has_queenside_castling_rights,
+        no_progress_count,
+        total_moves
+    )
+
+    # We add the counters to the feature vector:
+    for i in range(len(counter_layers)):
+        tensor = np.concatenate((tensor, np.full((8, 8, 1), counter_layers[i])), 2)
 
     return tensor
 

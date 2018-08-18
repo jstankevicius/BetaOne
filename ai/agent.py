@@ -31,7 +31,7 @@ def conv_block(x):
                kernel_size=3,
                strides=1,
                padding="same",
-               activation="relu",
+               activation="linear",
 
                # Should I be doing this as channels_first? Is there a difference?
                data_format="channels_last")(x)
@@ -50,7 +50,7 @@ def res_layer(x):
                kernel_size=3,
                strides=1,
                padding="same",
-               activation="relu",
+               activation="linear",
 
                # Should I be doing this as channels_first? Is there a difference?
                data_format="channels_last")(input_layer)
@@ -62,7 +62,7 @@ def res_layer(x):
                kernel_size=3,
                strides=1,
                padding="same",
-               activation="relu",
+               activation="linear",
 
                # Should I be doing this as channels_first? Is there a difference?
                data_format="channels_last")(x)

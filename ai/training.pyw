@@ -37,30 +37,35 @@ d = 0
 def get_batch(batch_size=256):
     inputs = np.zeros(shape=(batch_size, 8, 8, 30))
     outputs = np.zeros(shape=(batch_size, 1))
+    successful = 0
 
     pgn.seek(0, 2)
     size = pgn.tell()
     random_set = sorted(random.sample(range(size), batch_size))
 
     # We repeat random sampling of moves until we completely fill the inputs and outputs.
-    for i in range(batch_size):
+    while successful < batch_size:
+        try:
+            pgn.seek(random_set[i])
 
-        pgn.seek(random_set[i])
+            pgn.readline()
+            line = pgn.readline()
 
-        pgn.readline()
-        line = pgn.readline()
+            board_fen = line[:line.find("  ")]
+            board = Board(fen=board_fen)
 
-        board_fen = line[:line.find("  ")]
-        board = Board(fen=board_fen)
+            tensor = pos.board_tensor(board)
+            result = int(line[-3:-1])
 
-        tensor = pos.board_tensor(board)
-        result = int(line[-3:-1])
+            if board.turn == chess.BLACK:
+                result *= -1
 
-        if board.turn == chess.BLACK:
-            result *= -1
+            inputs[successful] = tensor
+            outputs[successful] = result
+            successful += 1
 
-        inputs[i] = tensor
-        outputs[i] = result
+        except ValueError:
+            pass
 
     return inputs, outputs
 

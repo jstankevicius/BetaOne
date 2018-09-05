@@ -2,6 +2,7 @@ import chess
 import position as pos
 from chess import Board
 
+
 # This is a move node that we use to construct an opening tree. Each node contains some
 # stats and its child nodes, which indicate the typical responses to a particular move.
 class Node:

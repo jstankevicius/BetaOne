@@ -1,23 +1,12 @@
-import pygsheets
 from agent import Agent
 from chess import Board
+from datetime import datetime
 import chess.pgn
 import position as pos
 import numpy as np
-import time
 import random
-import traceback
-import datetime
 
-
-gc = pygsheets.authorize(service_file="C://Users//Neda//Downloads//creds.json")
-sh = gc.open('Value Network Performance')
-
-# Select sheet:
-wks = sh[0]
-
-dataset_path = "D://data//qchess//games//"
-
+# The "absolute" result of the game, from the perspective of an observer.
 RESULT_DICT = {
     "1-0": 1,
     "1/2-1/2": 0,
@@ -25,23 +14,23 @@ RESULT_DICT = {
     "0-1": -1
 }
 
-# The number of the first game
-START = 17600000
-GAMES = 50000
-TRAINING = False
 
 pgn = open("D://data//FEN.txt")
-d = 0
 
 
 def get_batch(batch_size=256):
+
+    # Input and output tensors.
     inputs = np.zeros(shape=(batch_size, 8, 8, 30))
     outputs = np.zeros(shape=(batch_size, 1))
+
+    # "Successful" is simply how many lines were successfully parsed.
     successful = 0
     i = 0
+
     pgn.seek(0, 2)
     size = pgn.tell()
-    random_set = sorted(random.sample(range(size), batch_size))
+    random_set = sorted(random.sample(range(size), batch_size + 10))
 
     # We repeat random sampling of moves until we completely fill the inputs and outputs.
     while successful < batch_size:
@@ -67,59 +56,35 @@ def get_batch(batch_size=256):
 
         except ValueError:
             i += 1
-            
 
     return inputs, outputs
 
 
+def get_latest():
+    with open("latest.txt", "r") as file:
+        return file.readline().strip()
+
+
 def training_loop():
 
-    # optimizer = wks.cell("B2").value
-    batch_size = int(wks.cell("B3").value)
-    batches = int(wks.cell("B4").value)
-    load_existing = wks.cell("B5").value
-    load_path = wks.cell("B6").value
-    update_frequency = int(wks.cell("B7").value)
-    save_frequency = int(wks.cell("B8").value)
-
-    base_board = Board()
+    # load last agent
     agent = Agent()
+    agent.load_nn(get_latest() + ".h5")
 
-    writes = 0
+    for batch in range(100):
 
-    if load_existing == "yes":
-        agent.load_nn(load_path)
-    else:
-        agent.build_nn()
+        inputs, outputs = get_batch(batch_size=2048)
+        agent.train(inputs, outputs)
 
-    for batch in range(batches):
+    # Saving procedure:
+    t = datetime.now()
+    t_string = t.strftime("%m-%d_%H:%N")
 
-        inputs, outputs = get_batch(batch_size=batch_size)
-        loss = agent.train(inputs, outputs)
+    agent.get_nn().save("C://Users//Neda//Documents//GitHub//Shah//ai//models//model" + t_string + ".h5")
 
-        # Because we don't want to spam lots of information, UPDATE_FREQUENCY
-        # is used to determine when we should send the data to the sheet.
-        if (batch + 1) % update_frequency == 0:
-            base_eval = agent.eval(base_board).astype(np.str_)
-            wks.update_cell("A" + str(13 + writes), batch)
-            wks.update_cell("B" + str(13 + writes), str(loss))
-            wks.update_cell("C" + str(13 + writes), str(base_eval))
-            writes += 1
-
-        if (batch + 1) % save_frequency == 0:
-            # perform base evaluation:
-            agent.get_nn().save("C://Users//Neda//Documents//GitHub//Shah//ai//models//model" + str(batch + 1) + ".h5")
+    with open("latest.txt", "w") as file:
+        file.write(t_string)
 
 
 while True:
-
-    # Do nothing while we wait for scheduled launch.
-    while not TRAINING:
-        START_TIME = wks.cell("B9").value
-        current_time = datetime.datetime.now().strftime("%H:%M")
-        if current_time == START_TIME:
-            TRAINING = True
-        time.sleep(1)
-
     training_loop()
-    TRAINING = False

@@ -70,15 +70,16 @@ def training_loop():
     # load last agent
     agent = Agent()
     agent.load_nn(get_latest() + ".h5")
+    loss = 0
 
     for batch in range(100):
 
         inputs, outputs = get_batch(batch_size=2048)
-        agent.train(inputs, outputs)
+        loss = agent.train(inputs, outputs)
 
     # Saving procedure:
     t = datetime.now()
-    t_string = t.strftime("%m-%d_%H:%N")
+    t_string = t.strftime("%m-%d_%H:%N") + "_loss:" + str(loss)
 
     agent.get_nn().save("C://Users//Neda//Documents//GitHub//Shah//ai//models//model" + t_string + ".h5")
 
